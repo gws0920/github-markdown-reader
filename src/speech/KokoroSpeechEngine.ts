@@ -177,6 +177,7 @@ export class KokoroSpeechEngine implements SpeechEngine {
       return
     }
     if (message.type === 'sherpa-onnx-tts-ready') {
+      this.progressListener = null
       this.initializeResolve?.()
       this.initializeResolve = null
       this.initializeReject = null

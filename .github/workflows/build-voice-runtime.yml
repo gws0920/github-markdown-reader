@@ -51,6 +51,7 @@ jobs:
           path = Path('wasm/tts/sherpa-onnx-tts.js')
           source = path.read_text()
           source = source.replace('let modelType = 0;', 'let modelType = 7;')
+          source = source.replace('debug: 1,', 'debug: 0,')
           marker = '  }\n\n  const offlineTtsModelConfig = {'
           kokoro_case = '''    case 7:
               // kokoro zh-en
