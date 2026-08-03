@@ -17,11 +17,12 @@ describe('App startup', () => {
 
   it('预填示例地址但不自动加载', () => {
     render(<App />)
-    expect(screen.getByLabelText('GitHub 公开地址')).toHaveValue(
+    expect(screen.getByLabelText('GitHub 或 PDF 公开地址')).toHaveValue(
       'https://github.com/xdash/FDE-the-Guidance-Book-of-Forward-Deployed-Engineer',
     )
     expect(loadGitHubBook).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: '开始阅读' })).toBeEnabled()
+    expect(screen.getByRole('button', { name: '选择本地 PDF' })).toBeEnabled()
   })
 
   it('分享参数只预填地址而不自动加载', () => {
@@ -32,7 +33,9 @@ describe('App startup', () => {
       `/?source=${encodeURIComponent(sharedSource)}`,
     )
     render(<App />)
-    expect(screen.getByLabelText('GitHub 公开地址')).toHaveValue(sharedSource)
+    expect(screen.getByLabelText('GitHub 或 PDF 公开地址')).toHaveValue(
+      sharedSource,
+    )
     expect(loadGitHubBook).not.toHaveBeenCalled()
   })
 })

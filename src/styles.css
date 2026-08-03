@@ -133,7 +133,7 @@ a {
   width: 19px;
   flex: none;
 }
-.source-form input {
+.source-form #source-url {
   min-width: 0;
   width: 100%;
   height: 100%;
@@ -157,9 +157,16 @@ a {
   font-weight: 650;
   white-space: nowrap;
 }
-.source-form button {
+.source-form button[type='submit'] {
   min-width: 126px;
   flex: none;
+}
+.source-form .source-form__upload {
+  min-width: 112px;
+  margin-right: 8px;
+  border: 1px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
 }
 .source-form button svg,
 .empty-state button svg {
@@ -340,6 +347,10 @@ a {
 .article__masthead a {
   font-size: 0.76rem;
   text-underline-offset: 4px;
+}
+.article__local-source {
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 .article__body {
   max-width: 76ch;
@@ -644,10 +655,14 @@ a {
   .source-form__control {
     height: 48px;
   }
-  .source-form button {
+  .source-form button[type='submit'],
+  .source-form .source-form__upload {
     width: 48px;
     min-width: 48px;
     padding: 0;
+  }
+  .source-form .source-form__upload {
+    margin-right: 6px;
   }
   .source-form button span {
     display: none;

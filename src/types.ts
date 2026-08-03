@@ -1,6 +1,7 @@
 export type GitHubSourceKind = 'repository' | 'directory' | 'file'
 
 export interface GitHubSource {
+  sourceType: 'github'
   owner: string
   repo: string
   branch: string
@@ -8,6 +9,16 @@ export interface GitHubSource {
   kind: GitHubSourceKind
   originalUrl: string
 }
+
+export interface PdfSource {
+  sourceType: 'pdf'
+  origin: 'file' | 'url'
+  name: string
+  detail: string
+  originalUrl: string
+}
+
+export type ReaderSource = GitHubSource | PdfSource
 
 export interface ParsedGitHubUrl {
   owner: string

@@ -135,6 +135,7 @@ export async function resolveGitHubSource(
     )
     return {
       ...parsed,
+      sourceType: 'github',
       branch: repository.default_branch,
       path: '',
     }
@@ -144,6 +145,7 @@ export async function resolveGitHubSource(
     const branch = parsed.remainder.slice(0, index).join('/')
     if (await branchExists(parsed.owner, parsed.repo, branch)) {
       return {
+        sourceType: 'github',
         owner: parsed.owner,
         repo: parsed.repo,
         branch,

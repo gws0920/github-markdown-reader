@@ -16,14 +16,26 @@ import {
 } from 'lucide-react'
 import { useSpeechReader } from '../hooks/useSpeechReader'
 import { loadReaderState, saveReaderState } from '../lib/storage'
-import type { Chapter, GitHubSource, ReadingBlock } from '../types'
+import type { Chapter, ReaderSource, ReadingBlock } from '../types'
 
 interface ReaderWorkspaceProps {
   chapters: Chapter[]
-  source: GitHubSource
+  source: ReaderSource
   sourceInput: string
   menuOpen: boolean
   onMenuClose: () => void
+}
+
+/** 根据来源类型生成目录底部展示的三段来源信息。 */
+function getSourceMeta(source: ReaderSource): string[] {
+  if (source.sourceType === 'github') {
+    return [source.owner, source.repo, source.branch]
+  }
+  return [
+    source.name,
+    source.detail,
+    source.origin === 'file' ? '本地解析' : '公开链接',
+  ]
 }
 
 /** 将字节数量格式化为便于播放器展示的 MB 文本。 */
@@ -128,6 +140,7 @@ export function ReaderWorkspace({
   })
 
   const chapter = chapters[reader.chapterIndex]
+  const sourceMeta = getSourceMeta(source)
   const activeSentence = chapter.sentences[reader.sentenceIndex]
   const progress = ((reader.sentenceIndex + 1) / chapter.sentences.length) * 100
 
@@ -231,9 +244,9 @@ export function ReaderWorkspace({
             ))}
           </ol>
           <div className="catalog__meta">
-            <span>{source.owner}</span>
-            <span>{source.repo}</span>
-            <span>{source.branch}</span>
+            {sourceMeta.map((item) => (
+              <span key={item}>{item}</span>
+            ))}
           </div>
         </aside>
 
@@ -246,14 +259,23 @@ export function ReaderWorkspace({
           <header className="article__masthead">
             <div className="article__issue">
               <span>
-                Issue {String(reader.chapterIndex + 1).padStart(2, '0')}
+                {source.sourceType === 'pdf' ? 'Page' : 'Issue'}{' '}
+                {String(reader.chapterIndex + 1).padStart(2, '0')}
               </span>
               <span>{chapter.sentences.length} sentences</span>
             </div>
             <h1>{chapter.title}</h1>
-            <a href={chapter.sourceUrl} target="_blank" rel="noreferrer">
-              查看原始 Markdown
-            </a>
+            {chapter.sourceUrl ? (
+              <a href={chapter.sourceUrl} target="_blank" rel="noreferrer">
+                {source.sourceType === 'pdf'
+                  ? '打开原始 PDF'
+                  : '查看原始 Markdown'}
+              </a>
+            ) : (
+              <span className="article__local-source">
+                本地 PDF · 仅在浏览器中解析
+              </span>
+            )}
           </header>
           <div className="article__body">
             {chapter.blocks.map((block) => (
