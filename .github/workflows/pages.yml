@@ -31,6 +31,17 @@ jobs:
         run: npm ci --registry=https://registry.npmjs.org/
       - name: Quality checks
         run: npm run check
+      - name: Add voice runtime
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir --parents dist/voice-runtime
+          if gh release view voice-runtime-v1 >/dev/null 2>&1; then
+            gh release download voice-runtime-v1 --dir dist/voice-runtime
+          else
+            echo "Voice runtime release is not available yet; browser speech fallback remains enabled."
+          fi
       - name: Upload Pages artifact
         if: github.event_name == 'push'
         uses: actions/upload-pages-artifact@v5

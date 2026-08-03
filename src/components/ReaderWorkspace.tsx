@@ -4,13 +4,14 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleStop,
+  DatabaseZap,
   List,
   Pause,
   Play,
   RotateCcw,
   SkipBack,
   SkipForward,
-  Volume2,
+  Sparkles,
   X,
 } from 'lucide-react'
 import { useSpeechReader } from '../hooks/useSpeechReader'
@@ -23,6 +24,11 @@ interface ReaderWorkspaceProps {
   sourceInput: string
   menuOpen: boolean
   onMenuClose: () => void
+}
+
+/** 将字节数量格式化为便于播放器展示的 MB 文本。 */
+function formatMegabytes(bytes: number): string {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 /** 根据阅读块层级选择语义化标题元素。 */
@@ -117,7 +123,6 @@ export function ReaderWorkspace({
       Math.max(0, chapters[initialChapterIndex].sentences.length - 1),
     ),
     initialRate: savedState?.rate,
-    initialVoiceURI: savedState?.voiceURI,
     initialContinuous: savedState?.continuous,
     onPositionChange: handlePositionChange,
   })
@@ -132,7 +137,7 @@ export function ReaderWorkspace({
       chapterPath: chapter.path,
       sentenceIndex: reader.sentenceIndex,
       rate: reader.rate,
-      voiceURI: reader.voiceURI,
+      voiceURI: '',
       continuous: reader.continuous,
     })
   }, [chapter.path, reader, sourceInput])
@@ -334,6 +339,25 @@ export function ReaderWorkspace({
               {reader.error} <RotateCcw aria-hidden="true" />
             </button>
           ) : null}
+          {reader.progress ? (
+            <div className="player__notice" role="status">
+              <span>
+                正在准备本地自然语音 {reader.progress.percent.toFixed(1)}%
+                {reader.progress.totalBytes > 0
+                  ? ` · ${formatMegabytes(reader.progress.downloadedBytes)} / ${formatMegabytes(reader.progress.totalBytes)}`
+                  : ''}
+              </span>
+              <button onClick={reader.cancelNaturalVoice}>取消</button>
+            </div>
+          ) : reader.fallbackReason ? (
+            <div
+              className="player__notice player__notice--warning"
+              role="status"
+            >
+              <span>{reader.fallbackReason} 已切换到系统语音。</span>
+              <button onClick={reader.retryNaturalVoice}>重试自然语音</button>
+            </div>
+          ) : null}
         </div>
 
         <div className="player__settings">
@@ -350,20 +374,10 @@ export function ReaderWorkspace({
               ))}
             </select>
           </label>
-          <label className="voice-select">
-            <Volume2 aria-hidden="true" />
-            <span className="sr-only">系统语音</span>
-            <select
-              value={reader.voiceURI}
-              onChange={(event) => reader.setVoiceURI(event.target.value)}
-            >
-              {reader.voices.map((voice) => (
-                <option key={voice.voiceURI} value={voice.voiceURI}>
-                  {voice.name} · {voice.lang}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className={`engine-status engine-status--${reader.engineKind}`}>
+            <Sparkles aria-hidden="true" />
+            <span>{reader.engineLabel}</span>
+          </div>
           <label className="continuous-toggle">
             <input
               type="checkbox"
@@ -378,6 +392,13 @@ export function ReaderWorkspace({
             aria-label="停止朗读"
           >
             <CircleStop aria-hidden="true" />
+          </button>
+          <button
+            className="icon-button"
+            onClick={() => void reader.clearNaturalVoiceCache()}
+            aria-label="清除自然语音缓存"
+          >
+            <DatabaseZap aria-hidden="true" />
           </button>
         </div>
       </section>

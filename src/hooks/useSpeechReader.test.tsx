@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Chapter } from '../types'
 import { useSpeechReader } from './useSpeechReader'
@@ -33,8 +33,6 @@ const synthesis = {
     synthesis.paused = false
   }),
   getVoices: vi.fn(() => []),
-  addEventListener: vi.fn(),
-  removeEventListener: vi.fn(),
 }
 
 const chapter: Chapter = {
@@ -69,6 +67,10 @@ describe('useSpeechReader', () => {
     utterances.length = 0
     synthesis.paused = false
     vi.clearAllMocks()
+    Object.defineProperty(globalThis, 'Worker', {
+      value: undefined,
+      configurable: true,
+    })
     Object.defineProperty(window, 'speechSynthesis', {
       value: synthesis,
       configurable: true,
@@ -83,30 +85,30 @@ describe('useSpeechReader', () => {
     })
   })
 
-  it('每次只提交当前句并在结束后推进位置', () => {
-    vi.useFakeTimers()
+  it('自然语音不可用时回退系统语音，并在结束后推进位置', async () => {
     const { result } = renderHook(() =>
       useSpeechReader({ chapters: [chapter] }),
     )
 
     act(() => result.current.play())
-    expect(synthesis.speak).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(synthesis.speak).toHaveBeenCalledTimes(1))
     expect(utterances[0].text).toBe('第一句。')
     expect(result.current.sentenceIndex).toBe(0)
+    expect(result.current.engineKind).toBe('browser')
 
     act(() => utterances[0].onend?.())
-    act(() => vi.runAllTimers())
+    await waitFor(() => expect(synthesis.speak).toHaveBeenCalledTimes(2))
     expect(result.current.sentenceIndex).toBe(1)
-    expect(synthesis.speak).toHaveBeenCalledTimes(2)
     expect(utterances[1].text).toBe('第二句。')
-    vi.useRealTimers()
   })
 
-  it('暂停时保留当前句并可恢复', () => {
+  it('暂停时保留当前句并可恢复', async () => {
     const { result } = renderHook(() =>
       useSpeechReader({ chapters: [chapter] }),
     )
     act(() => result.current.play())
+    await waitFor(() => expect(result.current.status).toBe('playing'))
+
     act(() => result.current.pause())
     expect(result.current.status).toBe('paused')
     expect(result.current.sentenceIndex).toBe(0)

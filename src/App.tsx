@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { FormEvent, useCallback, useMemo, useState } from 'react'
 import { ArrowRight, Github, List, LoaderCircle } from 'lucide-react'
 import { ReaderWorkspace } from './components/ReaderWorkspace'
 import { loadGitHubBook } from './lib/github'
@@ -53,19 +53,12 @@ export default function App() {
     await loadSource(sourceInput)
   }
 
-  useEffect(() => {
-    void loadSource(initialSource)
-  }, [initialSource, loadSource])
-
   return (
     <div className="app-shell">
       <header className="site-header">
         <div className="brand">
-          <span className="brand__edition">Vol. 01 · Reader</span>
-          <div className="brand__name">Folio</div>
-          <span className="brand__tagline">
-            GitHub Markdown, spoken clearly.
-          </span>
+          <div className="brand__name">GitHub 章节朗读</div>
+          <span className="brand__tagline">逐句高亮 · 本地生成语音</span>
         </div>
         <form className="source-form" onSubmit={handleLoad}>
           <label htmlFor="source-url">GitHub 公开地址</label>
@@ -78,7 +71,7 @@ export default function App() {
               spellCheck="false"
               placeholder="https://github.com/owner/repository"
             />
-            <button type="submit" disabled={loading}>
+            <button type="submit" disabled={loading} aria-label="开始阅读">
               {loading ? (
                 <LoaderCircle className="spin" aria-hidden="true" />
               ) : (

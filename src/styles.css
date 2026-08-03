@@ -83,13 +83,14 @@ a {
   align-items: center;
 }
 .brand {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: end;
-  gap: 0 12px;
+  min-width: 230px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
 }
 .brand__edition {
-  grid-column: 1 / -1;
+  display: none;
   color: var(--muted);
   font-size: 0.65rem;
   letter-spacing: 0.14em;
@@ -97,17 +98,18 @@ a {
 }
 .brand__name {
   font:
-    600 clamp(2.4rem, 5vw, 4.4rem)/0.88 'Libre Bodoni',
+    600 clamp(1.8rem, 3vw, 2.8rem)/1.05 'Libre Bodoni',
     'Songti SC',
     serif;
-  letter-spacing: -0.06em;
+  letter-spacing: -0.035em;
+  white-space: nowrap;
 }
 .brand__tagline {
-  max-width: 120px;
-  padding-bottom: 3px;
-  font-size: 0.65rem;
-  line-height: 1.35;
-  text-transform: uppercase;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
 }
 .source-form {
   position: relative;
@@ -153,6 +155,11 @@ a {
   gap: 9px;
   padding: 0 18px;
   font-weight: 650;
+  white-space: nowrap;
+}
+.source-form button {
+  min-width: 126px;
+  flex: none;
 }
 .source-form button svg,
 .empty-state button svg {
@@ -514,13 +521,46 @@ a {
   color: var(--ink);
   font-size: 0.75rem;
 }
-.voice-select {
+.engine-status {
+  min-height: 42px;
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  font-size: 0.72rem;
+  white-space: nowrap;
 }
-.voice-select > svg {
+.engine-status > svg {
   width: 17px;
+}
+.engine-status--kokoro {
+  color: var(--accent);
+}
+.player__notice {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 18px);
+  max-width: min(720px, 82vw);
+  padding: 10px 12px;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 0.72rem;
+}
+.player__notice button {
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid currentColor;
+  background: transparent;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.player__notice--warning {
+  color: var(--muted);
 }
 .continuous-toggle {
   min-height: 44px;
@@ -596,17 +636,17 @@ a {
     padding: 14px 16px;
   }
   .brand__name {
-    font-size: 2.8rem;
+    font-size: 1.75rem;
   }
-  .brand__tagline,
-  .brand__edition {
-    display: none;
+  .brand__tagline {
+    font-size: 0.62rem;
   }
   .source-form__control {
     height: 48px;
   }
   .source-form button {
     width: 48px;
+    min-width: 48px;
     padding: 0;
   }
   .source-form button span {

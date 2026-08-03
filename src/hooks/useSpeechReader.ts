@@ -1,4 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { BrowserSpeechEngine } from '../speech/BrowserSpeechEngine'
+import { KokoroSpeechEngine } from '../speech/KokoroSpeechEngine'
+import type {
+  SpeechEngine,
+  SpeechEngineKind,
+  SpeechProgress,
+} from '../speech/types'
 import type { Chapter, PlaybackStatus } from '../types'
 
 interface SpeechReaderOptions {
@@ -6,7 +13,6 @@ interface SpeechReaderOptions {
   initialChapterIndex?: number
   initialSentenceIndex?: number
   initialRate?: number
-  initialVoiceURI?: string
   initialContinuous?: boolean
   onPositionChange?: (chapterIndex: number, sentenceIndex: number) => void
 }
@@ -15,65 +21,69 @@ interface SpeechReaderResult {
   supported: boolean
   status: PlaybackStatus
   error: string
-  voices: SpeechSynthesisVoice[]
+  fallbackReason: string
+  engineKind: SpeechEngineKind
+  engineLabel: string
+  progress: SpeechProgress | null
   chapterIndex: number
   sentenceIndex: number
   rate: number
-  voiceURI: string
   continuous: boolean
   play: () => void
   pause: () => void
   stop: () => void
   retry: () => void
+  retryNaturalVoice: () => void
+  cancelNaturalVoice: () => void
+  clearNaturalVoiceCache: () => Promise<boolean>
   previousSentence: () => void
   nextSentence: () => void
   previousChapter: () => void
   nextChapter: () => void
   selectChapter: (index: number, sentenceIndex?: number) => void
   setRate: (rate: number) => void
-  setVoiceURI: (voiceURI: string) => void
   setContinuous: (continuous: boolean) => void
 }
 
-/** 提供严格逐句的浏览器朗读状态机，并保证任意时刻只存在一个活动语音实例。 */
+/** 提供 Kokoro 优先、系统语音回退的逐句朗读状态机。 */
 export function useSpeechReader({
   chapters,
   initialChapterIndex = 0,
   initialSentenceIndex = 0,
   initialRate = 1,
-  initialVoiceURI = '',
   initialContinuous = true,
   onPositionChange,
 }: SpeechReaderOptions): SpeechReaderResult {
   const supported =
     typeof window !== 'undefined' &&
-    'speechSynthesis' in window &&
-    'SpeechSynthesisUtterance' in window
+    (typeof Worker !== 'undefined' || 'speechSynthesis' in window)
   const [status, setStatus] = useState<PlaybackStatus>('idle')
   const [error, setError] = useState('')
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
+  const [fallbackReason, setFallbackReason] = useState('')
+  const [engineKind, setEngineKind] = useState<SpeechEngineKind>('kokoro')
+  const [engineLabel, setEngineLabel] = useState('本地自然女声')
+  const [progress, setProgress] = useState<SpeechProgress | null>(null)
   const [chapterIndex, setChapterIndex] = useState(initialChapterIndex)
   const [sentenceIndex, setSentenceIndex] = useState(initialSentenceIndex)
   const [rate, updateRate] = useState(initialRate)
-  const [voiceURI, updateVoiceURI] = useState(initialVoiceURI)
   const [continuous, updateContinuous] = useState(initialContinuous)
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null)
   const statusRef = useRef<PlaybackStatus>('idle')
   const chapterIndexRef = useRef(initialChapterIndex)
   const sentenceIndexRef = useRef(initialSentenceIndex)
   const rateRef = useRef(initialRate)
-  const voiceURIRef = useRef(initialVoiceURI)
   const continuousRef = useRef(initialContinuous)
   const chaptersRef = useRef(chapters)
+  const engineRef = useRef<SpeechEngine>(new KokoroSpeechEngine())
+  const initializedRef = useRef(false)
   const speakCurrentRef = useRef<() => void>(() => undefined)
 
-  /** 同步 React 状态与事件回调读取的播放状态引用。 */
+  /** 同步 React 状态与事件回调使用的播放状态。 */
   const updateStatus = useCallback((nextStatus: PlaybackStatus) => {
     statusRef.current = nextStatus
     setStatus(nextStatus)
   }, [])
 
-  /** 更新当前朗读位置，并向外部持久化层报告变更。 */
+  /** 更新朗读位置，并向持久化层报告变更。 */
   const updatePosition = useCallback(
     (nextChapterIndex: number, nextSentenceIndex: number) => {
       chapterIndexRef.current = nextChapterIndex
@@ -85,23 +95,33 @@ export function useSpeechReader({
     [onPositionChange],
   )
 
-  /** 取消浏览器当前语音，并清除本地语音实例引用。 */
-  const cancelSpeech = useCallback(() => {
-    if (!supported) return
-    window.speechSynthesis.cancel()
-    utteranceRef.current = null
-  }, [supported])
+  /** 读取当前位置之后最适合预生成的下一句文本。 */
+  const getNextSentenceText = useCallback((): string => {
+    const chapter = chaptersRef.current[chapterIndexRef.current]
+    if (!chapter) return ''
+    if (sentenceIndexRef.current + 1 < chapter.sentences.length) {
+      return chapter.sentences[sentenceIndexRef.current + 1].text
+    }
+    if (
+      continuousRef.current &&
+      chapterIndexRef.current + 1 < chaptersRef.current.length
+    ) {
+      return (
+        chaptersRef.current[chapterIndexRef.current + 1].sentences[0]?.text ??
+        ''
+      )
+    }
+    return ''
+  }, [])
 
-  /** 推进到下一句或下一章，并返回是否成功移动。 */
+  /** 将朗读位置推进到下一句或连续播放的下一章。 */
   const advancePosition = useCallback((): boolean => {
-    const currentChapter = chaptersRef.current[chapterIndexRef.current]
-    if (!currentChapter) return false
-
-    if (sentenceIndexRef.current + 1 < currentChapter.sentences.length) {
+    const chapter = chaptersRef.current[chapterIndexRef.current]
+    if (!chapter) return false
+    if (sentenceIndexRef.current + 1 < chapter.sentences.length) {
       updatePosition(chapterIndexRef.current, sentenceIndexRef.current + 1)
       return true
     }
-
     if (
       continuousRef.current &&
       chapterIndexRef.current + 1 < chaptersRef.current.length
@@ -112,14 +132,48 @@ export function useSpeechReader({
     return false
   }, [updatePosition])
 
-  /** 创建并播放当前位置的单句语音，结束后按连续播放规则推进。 */
-  const speakCurrent = useCallback(() => {
+  /** 切换到系统语音并记录高质量语音不可用的原因。 */
+  const switchToBrowserEngine = useCallback(
+    async (reason: string): Promise<void> => {
+      engineRef.current.destroy()
+      const browserEngine = new BrowserSpeechEngine()
+      await browserEngine.initialize()
+      engineRef.current = browserEngine
+      initializedRef.current = true
+      setEngineKind(browserEngine.kind)
+      setEngineLabel(browserEngine.label)
+      setFallbackReason(reason)
+      setProgress(null)
+    },
+    [],
+  )
+
+  /** 初始化当前引擎，Kokoro 失败时自动启用系统语音。 */
+  const ensureEngine = useCallback(async (): Promise<void> => {
+    if (initializedRef.current) return
+    setError('')
+    try {
+      await engineRef.current.initialize(setProgress)
+      initializedRef.current = true
+      setEngineKind(engineRef.current.kind)
+      setEngineLabel(engineRef.current.label)
+      setProgress(null)
+    } catch (initializationError) {
+      const reason =
+        initializationError instanceof Error
+          ? initializationError.message
+          : '本地自然语音初始化失败。'
+      await switchToBrowserEngine(reason)
+    }
+  }, [switchToBrowserEngine])
+
+  /** 播放当前句，并在音频真正开始后更新高亮与预生成下一句。 */
+  const speakCurrent = useCallback(async () => {
     if (!supported) {
-      setError('当前浏览器不支持系统语音朗读。')
+      setError('当前浏览器不支持语音朗读。')
       updateStatus('error')
       return
     }
-
     const chapter = chaptersRef.current[chapterIndexRef.current]
     const sentence = chapter?.sentences[sentenceIndexRef.current]
     if (!sentence) {
@@ -127,66 +181,67 @@ export function useSpeechReader({
       return
     }
 
-    cancelSpeech()
     setError('')
-    const utterance = new SpeechSynthesisUtterance(sentence.text)
-    utterance.lang = 'zh-CN'
-    utterance.rate = rateRef.current
-    const selectedVoice = voices.find(
-      (voice) => voice.voiceURI === voiceURIRef.current,
-    )
-    if (selectedVoice) utterance.voice = selectedVoice
-
-    utterance.onstart = () => updateStatus('playing')
-    utterance.onend = () => {
-      utteranceRef.current = null
-      if (statusRef.current !== 'playing') return
-      if (advancePosition()) {
-        window.setTimeout(() => speakCurrentRef.current(), 40)
-      } else {
-        updateStatus('idle')
-      }
-    }
-    utterance.onerror = (event) => {
-      utteranceRef.current = null
-      if (event.error === 'canceled' || event.error === 'interrupted') return
-      setError('语音播放意外中断，请重试当前句。')
+    updateStatus('idle')
+    try {
+      await ensureEngine()
+      await engineRef.current.speak({
+        text: sentence.text,
+        rate: rateRef.current,
+        onStart: () => {
+          updateStatus('playing')
+          const nextText = getNextSentenceText()
+          if (nextText) engineRef.current.prepare(nextText, rateRef.current)
+        },
+        onEnd: () => {
+          if (statusRef.current !== 'playing') return
+          if (advancePosition())
+            window.setTimeout(() => speakCurrentRef.current(), 30)
+          else updateStatus('idle')
+        },
+        onError: (speechError) => {
+          setError(speechError.message)
+          updateStatus('error')
+        },
+      })
+    } catch (speechError) {
+      setError(
+        speechError instanceof Error ? speechError.message : '语音播放失败。',
+      )
       updateStatus('error')
     }
+  }, [
+    advancePosition,
+    ensureEngine,
+    getNextSentenceText,
+    supported,
+    updateStatus,
+  ])
 
-    utteranceRef.current = utterance
-    window.speechSynthesis.speak(utterance)
-  }, [advancePosition, cancelSpeech, supported, updateStatus, voices])
+  speakCurrentRef.current = () => void speakCurrent()
 
-  speakCurrentRef.current = speakCurrent
-
-  /** 开始新语音或恢复浏览器暂停的当前语音。 */
+  /** 开始新语音或恢复当前引擎暂停的音频。 */
   const play = useCallback(() => {
-    if (!supported) {
-      setError('当前浏览器不支持系统语音朗读。')
-      updateStatus('error')
-      return
-    }
-    if (statusRef.current === 'paused' && window.speechSynthesis.paused) {
-      window.speechSynthesis.resume()
+    if (statusRef.current === 'paused') {
+      engineRef.current.resume()
       updateStatus('playing')
       return
     }
     speakCurrentRef.current()
-  }, [supported, updateStatus])
+  }, [updateStatus])
 
-  /** 暂停当前语音并保留当前位置和高亮。 */
+  /** 暂停当前引擎并保留高亮和音频位置。 */
   const pause = useCallback(() => {
-    if (!supported || statusRef.current !== 'playing') return
-    window.speechSynthesis.pause()
+    if (statusRef.current !== 'playing') return
+    engineRef.current.pause()
     updateStatus('paused')
-  }, [supported, updateStatus])
+  }, [updateStatus])
 
-  /** 停止当前语音并保留当前句，供用户稍后重新播放。 */
+  /** 停止当前音频并保留当前句。 */
   const stop = useCallback(() => {
-    cancelSpeech()
+    engineRef.current.stop()
     updateStatus('idle')
-  }, [cancelSpeech, updateStatus])
+  }, [updateStatus])
 
   /** 重新播放发生错误的当前句。 */
   const retry = useCallback(() => {
@@ -194,7 +249,32 @@ export function useSpeechReader({
     speakCurrentRef.current()
   }, [])
 
-  /** 跳转到指定位置，并按需延续原有播放状态。 */
+  /** 重新创建 Kokoro 引擎并尝试恢复本地自然语音。 */
+  const retryNaturalVoice = useCallback(() => {
+    engineRef.current.destroy()
+    engineRef.current = new KokoroSpeechEngine()
+    initializedRef.current = false
+    setEngineKind('kokoro')
+    setEngineLabel('本地自然女声')
+    setFallbackReason('')
+    setProgress(null)
+    speakCurrentRef.current()
+  }, [])
+
+  /** 取消正在初始化的本地语音并立即切换到系统语音。 */
+  const cancelNaturalVoice = useCallback(() => {
+    void switchToBrowserEngine('已取消本地自然语音下载。').then(() => {
+      updateStatus('idle')
+    })
+  }, [switchToBrowserEngine, updateStatus])
+
+  /** 清除浏览器中缓存的本地自然语音模型。 */
+  const clearNaturalVoiceCache = useCallback(
+    () => KokoroSpeechEngine.clearCache(),
+    [],
+  )
+
+  /** 跳转到指定位置，并在原本播放时从新位置继续。 */
   const moveTo = useCallback(
     (
       nextChapterIndex: number,
@@ -202,17 +282,17 @@ export function useSpeechReader({
       keepPlaying = true,
     ) => {
       const wasPlaying = statusRef.current === 'playing'
-      cancelSpeech()
+      engineRef.current.stop()
       updatePosition(nextChapterIndex, nextSentenceIndex)
       updateStatus('idle')
       if (wasPlaying && keepPlaying) {
-        window.setTimeout(() => speakCurrentRef.current(), 40)
+        window.setTimeout(() => speakCurrentRef.current(), 30)
       }
     },
-    [cancelSpeech, updatePosition, updateStatus],
+    [updatePosition, updateStatus],
   )
 
-  /** 跳转到上一句，位于章首时进入上一章末句。 */
+  /** 跳转到上一句，章首时进入上一章末句。 */
   const previousSentence = useCallback(() => {
     if (sentenceIndexRef.current > 0) {
       moveTo(chapterIndexRef.current, sentenceIndexRef.current - 1)
@@ -227,7 +307,7 @@ export function useSpeechReader({
     }
   }, [moveTo])
 
-  /** 跳转到下一句，位于章末时进入下一章首句。 */
+  /** 跳转到下一句，章末时进入下一章首句。 */
   const nextSentence = useCallback(() => {
     const chapter = chaptersRef.current[chapterIndexRef.current]
     if (!chapter) return
@@ -252,25 +332,21 @@ export function useSpeechReader({
     }
   }, [moveTo])
 
-  /** 选择章节或章节内小节，并停止当前语音后更新位置。 */
+  /** 选择章节或章节内小节，并停止当前音频。 */
   const selectChapter = useCallback(
     (index: number, nextSentenceIndex = 0) =>
       moveTo(index, nextSentenceIndex, false),
     [moveTo],
   )
 
-  /** 更新朗读倍速，播放中会从当前句按新倍速重新开始。 */
+  /** 更新语速，播放中从当前句按新速度重新生成。 */
   const setRate = useCallback((nextRate: number) => {
     rateRef.current = nextRate
     updateRate(nextRate)
-    if (statusRef.current === 'playing') speakCurrentRef.current()
-  }, [])
-
-  /** 更新系统语音，播放中会从当前句使用新声音重新开始。 */
-  const setVoiceURI = useCallback((nextVoiceURI: string) => {
-    voiceURIRef.current = nextVoiceURI
-    updateVoiceURI(nextVoiceURI)
-    if (statusRef.current === 'playing') speakCurrentRef.current()
+    if (statusRef.current === 'playing') {
+      engineRef.current.stop()
+      speakCurrentRef.current()
+    }
   }, [])
 
   /** 更新章节结束后的连续播放偏好。 */
@@ -283,57 +359,38 @@ export function useSpeechReader({
     chaptersRef.current = chapters
   }, [chapters])
 
-  useEffect(() => {
-    if (!supported) return undefined
-
-    /** 读取系统语音列表，并优先选择中文语音。 */
-    const refreshVoices = () => {
-      const availableVoices = window.speechSynthesis.getVoices()
-      setVoices(availableVoices)
-      if (!voiceURIRef.current) {
-        const preferred =
-          availableVoices.find(
-            (voice) => voice.lang.toLowerCase() === 'zh-cn',
-          ) ??
-          availableVoices.find((voice) =>
-            voice.lang.toLowerCase().startsWith('zh'),
-          )
-        if (preferred) {
-          voiceURIRef.current = preferred.voiceURI
-          updateVoiceURI(preferred.voiceURI)
-        }
-      }
-    }
-
-    refreshVoices()
-    window.speechSynthesis.addEventListener('voiceschanged', refreshVoices)
-    return () =>
-      window.speechSynthesis.removeEventListener('voiceschanged', refreshVoices)
-  }, [supported])
-
-  useEffect(() => cancelSpeech, [cancelSpeech])
+  useEffect(
+    () => () => {
+      engineRef.current.destroy()
+    },
+    [],
+  )
 
   return {
     supported,
     status,
     error,
-    voices,
+    fallbackReason,
+    engineKind,
+    engineLabel,
+    progress,
     chapterIndex,
     sentenceIndex,
     rate,
-    voiceURI,
     continuous,
     play,
     pause,
     stop,
     retry,
+    retryNaturalVoice,
+    cancelNaturalVoice,
+    clearNaturalVoiceCache,
     previousSentence,
     nextSentence,
     previousChapter,
     nextChapter,
     selectChapter,
     setRate,
-    setVoiceURI,
     setContinuous,
   }
 }

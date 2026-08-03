@@ -1,0 +1,63 @@
+name: Build Voice Runtime
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout application
+        uses: actions/checkout@v7
+
+      - name: Setup Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 4.0.23
+          actions-cache-folder: emsdk-cache
+
+      - name: Checkout speech runtime source
+        run: git clone --depth 1 --branch v1.13.4 https://github.com/k2-fsa/sherpa-onnx.git runtime-source
+
+      - name: Download Kokoro model
+        working-directory: runtime-source/wasm/tts/assets
+        run: |
+          curl --fail --location --retry 3 \
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-int8-multi-lang-v1_1.tar.bz2 \
+            --output kokoro.tar.bz2
+          tar --extract --bzip2 --strip-components 1 --file kokoro.tar.bz2
+          unlink kokoro.tar.bz2
+
+      - name: Configure single-thread WebAssembly
+        working-directory: runtime-source
+        run: |
+          sed --in-place '/-pthread -sPTHREAD_POOL_SIZE=4/d' wasm/tts/CMakeLists.txt
+          sed --in-place '/pthread-enabled/d' wasm/tts/CMakeLists.txt
+
+      - name: Build WebAssembly runtime
+        working-directory: runtime-source
+        run: ./build-wasm-simd-tts.sh
+
+      - name: Collect runtime files
+        run: |
+          mkdir --parents voice-runtime
+          cp runtime-source/build-wasm-simd-tts/install/bin/wasm/tts/sherpa-onnx-tts.js voice-runtime/
+          cp runtime-source/build-wasm-simd-tts/install/bin/wasm/tts/sherpa-onnx-tts.worker.js voice-runtime/
+          cp runtime-source/build-wasm-simd-tts/install/bin/wasm/tts/sherpa-onnx-wasm-main-tts.js voice-runtime/
+          cp runtime-source/build-wasm-simd-tts/install/bin/wasm/tts/sherpa-onnx-wasm-main-tts.wasm voice-runtime/
+          cp runtime-source/build-wasm-simd-tts/install/bin/wasm/tts/sherpa-onnx-wasm-main-tts.data voice-runtime/
+          cp runtime-source/LICENSE voice-runtime/LICENSE.sherpa-onnx.txt
+          cp runtime-source/wasm/tts/assets/LICENSE voice-runtime/LICENSE.kokoro.txt
+          ls -lh voice-runtime
+
+      - name: Publish voice runtime release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view voice-runtime-v1 >/dev/null 2>&1 || \
+            gh release create voice-runtime-v1 --title "Voice Runtime v1" --notes "Single-thread browser runtime for local Chinese speech synthesis."
+          gh release upload voice-runtime-v1 voice-runtime/* --clobber
