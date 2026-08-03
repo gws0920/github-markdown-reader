@@ -23,6 +23,12 @@ describe('splitIntoSentences', () => {
     ).toBe('查看 正文 封面')
   })
 
+  it('移除神经语音词表不支持的装饰性表情符号', () => {
+    expect(cleanInlineMarkdown('重点提示 ❓ 请继续阅读。')).toBe(
+      '重点提示 请继续阅读。',
+    )
+  })
+
   it('将超长文本继续拆分为安全长度', () => {
     const sentences = splitIntoSentences(`${'很长的内容，'.repeat(60)}结束。`)
     expect(sentences.length).toBeGreaterThan(1)

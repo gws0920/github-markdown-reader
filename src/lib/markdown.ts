@@ -28,6 +28,7 @@ export function cleanInlineMarkdown(value: string): string {
     .replace(/https?:\/\/\S+/g, '')
     .replace(/[`*_~]/g, '')
     .replace(/<[^>]+>/g, '')
+    .replace(/[\p{Extended_Pictographic}\uFE0F]/gu, '')
     .replace(/\s+/g, ' ')
     .trim()
 }
