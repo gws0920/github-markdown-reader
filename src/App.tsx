@@ -101,17 +101,17 @@ export default function App() {
         />
       ) : (
         <main className="empty-state">
-          <div className="empty-state__number">01</div>
+          <div className="empty-state__number">公开阅读</div>
           <div>
-            <span className="eyebrow">Listen to the long read</span>
+            <span className="eyebrow">从 GitHub 地址开始</span>
             <h1>
               把长篇 Markdown，
               <br />
               变成可以听的杂志。
             </h1>
             <p>
-              粘贴公开仓库、目录或单个文档地址。Folio
-              会整理章节、拆分句子，并在朗读时同步标出当前位置。
+              粘贴公开仓库、目录或单个文档地址。应用会整理章节、拆分句子，
+              并在朗读时同步标出当前位置。
             </p>
             <button onClick={() => void handleLoad()} disabled={loading}>
               加载示例读物 <ArrowRight aria-hidden="true" />
