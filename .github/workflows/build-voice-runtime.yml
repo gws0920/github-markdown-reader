@@ -2,6 +2,10 @@ name: Build Voice Runtime
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/build-voice-runtime.yml
 
 permissions:
   contents: write
@@ -37,6 +41,32 @@ jobs:
         run: |
           sed --in-place '/-pthread -sPTHREAD_POOL_SIZE=4/d' wasm/tts/CMakeLists.txt
           sed --in-place '/pthread-enabled/d' wasm/tts/CMakeLists.txt
+
+      - name: Configure Kokoro WebAssembly defaults
+        working-directory: runtime-source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('wasm/tts/sherpa-onnx-tts.js')
+          source = path.read_text()
+          source = source.replace('let modelType = 0;', 'let modelType = 7;')
+          marker = '  }\n\n  const offlineTtsModelConfig = {'
+          kokoro_case = '''    case 7:
+              // kokoro zh-en
+              offlineTtsKokoroModelConfig.model = './model.int8.onnx';
+              offlineTtsKokoroModelConfig.voices = './voices.bin';
+              offlineTtsKokoroModelConfig.tokens = './tokens.txt';
+              offlineTtsKokoroModelConfig.dataDir = './espeak-ng-data';
+              offlineTtsKokoroModelConfig.lexicon =
+                  './lexicon-us-en.txt,./lexicon-zh.txt';
+              ruleFsts = './phone-zh.fst,./date-zh.fst,./number-zh.fst';
+              break;
+            }\n\n  const offlineTtsModelConfig = {'''
+          if marker not in source:
+              raise SystemExit('Unable to locate the TTS model switch.')
+          path.write_text(source.replace(marker, kokoro_case, 1))
+          PY
 
       - name: Build WebAssembly runtime
         working-directory: runtime-source

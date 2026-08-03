@@ -1,4 +1,4 @@
-const CACHE_NAME = 'github-markdown-reader-kokoro-v1'
+const CACHE_NAME = 'github-markdown-reader-kokoro-v2'
 
 /** 安装后立即接管当前页面，确保首次模型请求也可进入缓存。 */
 self.addEventListener('install', () => self.skipWaiting())
