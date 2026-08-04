@@ -176,6 +176,10 @@ export function useSpeechReader({
       setEngineLabel(engineRef.current.label)
       setProgress(null)
     } catch (initializationError) {
+      console.error(
+        '[SpeechReader] 本地自然语音初始化失败',
+        initializationError,
+      )
       const reason =
         initializationError instanceof Error
           ? initializationError.message
@@ -192,6 +196,7 @@ export function useSpeechReader({
   const recoverSpeechFailure = useCallback(
     async (speechError: Error): Promise<void> => {
       const details = speechError.stack ?? speechError.message
+      console.error('[SpeechReader] 本地自然语音播放失败', speechError)
       if (engineRef.current.kind !== 'kokoro') {
         setError(speechError.message)
         setDiagnostic(details)
@@ -206,6 +211,7 @@ export function useSpeechReader({
         updateStatus('idle')
         window.setTimeout(() => speakCurrentRef.current(), 30)
       } catch (fallbackError) {
+        console.error('[SpeechReader] 系统语音回退失败', fallbackError)
         const fallbackDetails =
           fallbackError instanceof Error
             ? (fallbackError.stack ?? fallbackError.message)

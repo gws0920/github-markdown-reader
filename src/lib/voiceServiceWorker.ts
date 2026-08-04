@@ -88,6 +88,7 @@ export function registerVoiceCache(): Promise<ServiceWorkerRegistration | null> 
     })
     .catch((error) => {
       registrationPromise = null
+      console.error('[VoiceServiceWorker] 注册失败', error)
       throw new Error(
         `语音缓存服务注册失败。\n${formatServiceWorkerError(error)}`,
       )
@@ -126,6 +127,10 @@ export async function waitForVoiceCacheControl(
       return await waitForController(timeoutMs)
     }
   } catch (error) {
+    console.error('[VoiceServiceWorker] 页面接管失败', {
+      error,
+      diagnostic: describeRegistration(registration),
+    })
     throw new Error(
       `语音缓存服务未能接管当前页面。\n${formatServiceWorkerError(error)}\n${describeRegistration(registration)}`,
     )

@@ -341,6 +341,7 @@ export class KokoroSpeechEngine implements SpeechEngine {
       return
     }
     const error = new Error(message.message || '本地语音运行时出错。')
+    console.error('[KokoroSpeechEngine] Worker 返回错误', error)
     if (this.initializeReject) this.failInitialization(error)
     else {
       this.activeTask?.reject(error)
@@ -415,7 +416,21 @@ export class KokoroSpeechEngine implements SpeechEngine {
     audioPromise: Promise<GeneratedAudio>,
   ): Promise<GeneratedAudio> {
     return new Promise((resolve, reject) => {
+      const startedAt = performance.now()
       const timer = window.setTimeout(() => {
+        const activeText = this.activeTask?.text ?? ''
+        console.error('[KokoroSpeechEngine] 单句生成超时', {
+          timeoutMs: GENERATION_TIMEOUT_MS,
+          elapsedMs: Math.round(performance.now() - startedAt),
+          engine: 'sherpa-onnx-wasm-single-thread',
+          crossOriginIsolated: window.crossOriginIsolated,
+          sharedArrayBufferAvailable:
+            typeof globalThis.SharedArrayBuffer !== 'undefined',
+          textLength: activeText.length,
+          textPreview: activeText.slice(0, 120),
+          rate: this.activeTask?.rate,
+          queuedTaskCount: this.queue.length,
+        })
         this.worker?.terminate()
         this.worker = null
         this.activeTask = null
