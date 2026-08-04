@@ -1,4 +1,4 @@
-const CACHE_NAME = 'github-markdown-reader-kokoro-v3'
+const CACHE_NAME = 'github-markdown-reader-kokoro-v4'
 
 /** 安装后立即接管当前页面，确保首次模型请求也可进入缓存。 */
 self.addEventListener('install', () => self.skipWaiting())
@@ -34,7 +34,9 @@ self.addEventListener('fetch', (event) => {
       const cached = await cache.match(event.request)
       if (cached) return cached
       const response = await fetch(event.request)
-      if (response.ok) await cache.put(event.request, response.clone())
+      if (response.ok) {
+        event.waitUntil(cache.put(event.request, response.clone()))
+      }
       return response
     }),
   )
