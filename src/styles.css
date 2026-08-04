@@ -352,6 +352,35 @@ a {
   color: var(--muted);
   font-size: 0.78rem;
 }
+.article__view-toggle {
+  display: flex;
+  width: fit-content;
+  max-width: 980px;
+  margin: -26px auto 40px;
+  border: 1px solid var(--line);
+}
+.article__view-toggle button {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 15px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.article__view-toggle button + button {
+  border-left: 1px solid var(--line);
+}
+.article__view-toggle button.is-active {
+  background: var(--ink);
+  color: var(--paper);
+}
+.article__view-toggle svg {
+  width: 16px;
+  height: 16px;
+}
 .article__pdf-preview {
   max-width: 980px;
   margin: 0 auto 52px;

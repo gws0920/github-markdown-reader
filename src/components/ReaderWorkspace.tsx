@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   BookOpenText,
   ChevronLeft,
   ChevronRight,
   CircleStop,
   DatabaseZap,
+  FileText,
+  ImageIcon,
   List,
   Pause,
   Play,
@@ -109,6 +111,7 @@ export function ReaderWorkspace({
   )
   const articleRef = useRef<HTMLElement | null>(null)
   const manualScrollUntilRef = useRef(0)
+  const [pdfViewMode, setPdfViewMode] = useState<'text' | 'page'>('text')
 
   /** 保存位置变更，同时避免保存不存在的章节。 */
   const handlePositionChange = useCallback(
@@ -143,6 +146,11 @@ export function ReaderWorkspace({
   const sourceMeta = getSourceMeta(source)
   const activeSentence = chapter.sentences[reader.sentenceIndex]
   const progress = ((reader.sentenceIndex + 1) / chapter.sentences.length) * 100
+
+  /** 切换章节或读物时恢复 PDF 文本预览，避免沿用上一页的原始页面模式。 */
+  useEffect(() => {
+    setPdfViewMode('text')
+  }, [chapter.id, sourceInput])
 
   /** 保存非位置类的播放器偏好。 */
   const persistPreferences = useCallback(() => {
@@ -277,24 +285,46 @@ export function ReaderWorkspace({
               </span>
             )}
           </header>
-          {chapter.previewUrl ? (
+          {source.sourceType === 'pdf' && chapter.previewUrl ? (
+            <div className="article__view-toggle" aria-label="PDF 预览模式">
+              <button
+                className={pdfViewMode === 'text' ? 'is-active' : ''}
+                onClick={() => setPdfViewMode('text')}
+                type="button"
+              >
+                <FileText aria-hidden="true" />
+                文本预览
+              </button>
+              <button
+                className={pdfViewMode === 'page' ? 'is-active' : ''}
+                onClick={() => setPdfViewMode('page')}
+                type="button"
+              >
+                <ImageIcon aria-hidden="true" />
+                原始页面
+              </button>
+            </div>
+          ) : null}
+          {chapter.previewUrl && pdfViewMode === 'page' ? (
             <figure className="article__pdf-preview">
               <img
                 alt={`${chapter.title} 原始页面预览`}
                 src={chapter.previewUrl}
               />
-              <figcaption>原始页面预览 · 下方文字用于逐句朗读与高亮</figcaption>
+              <figcaption>PDF 原始页面预览</figcaption>
             </figure>
           ) : null}
-          <div className="article__body">
-            {chapter.blocks.map((block) => (
-              <ArticleBlock
-                activeSentenceId={activeSentence?.id ?? ''}
-                block={block}
-                key={block.id}
-              />
-            ))}
-          </div>
+          {pdfViewMode === 'text' || source.sourceType !== 'pdf' ? (
+            <div className="article__body">
+              {chapter.blocks.map((block) => (
+                <ArticleBlock
+                  activeSentenceId={activeSentence?.id ?? ''}
+                  block={block}
+                  key={block.id}
+                />
+              ))}
+            </div>
+          ) : null}
           <footer className="article__footer">
             <BookOpenText aria-hidden="true" />
             <span>本章朗读完毕后，可自动进入下一章。</span>

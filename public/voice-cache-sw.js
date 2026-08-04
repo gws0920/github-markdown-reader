@@ -29,10 +29,15 @@ self.addEventListener('activate', (event) => {
 })
 
 /** 向全部页面广播当前资源来源，便于播放器展示加速与回退状态。 */
-async function broadcastRuntimeSource(source, fileName) {
+async function broadcastRuntimeSource(source, fileName, totalBytes = 0) {
   const clients = await self.clients.matchAll({ type: 'window' })
   clients.forEach((client) =>
-    client.postMessage({ type: 'voice-runtime-source', source, fileName }),
+    client.postMessage({
+      type: 'voice-runtime-source',
+      source,
+      fileName,
+      totalBytes,
+    }),
   )
 }
 
@@ -51,6 +56,10 @@ function shouldUseReleaseCdn(fileName) {
 function markRuntimeSource(response, source) {
   const headers = new Headers(response.headers)
   headers.set('X-Voice-Runtime-Source', source)
+  const totalBytes = Number(response.headers.get('content-length'))
+  if (Number.isFinite(totalBytes) && totalBytes > 0) {
+    headers.set('X-Voice-Runtime-Total-Bytes', String(totalBytes))
+  }
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -68,7 +77,8 @@ async function fetchCdnAsset(fileName, request) {
       signal: controller.signal,
     })
     if (!response.ok) throw new Error(`Voice CDN returned ${response.status}`)
-    await broadcastRuntimeSource('cdn', fileName)
+    const totalBytes = Number(response.headers.get('content-length')) || 0
+    await broadcastRuntimeSource('cdn', fileName, totalBytes)
     return markRuntimeSource(response, 'cdn')
   } finally {
     clearTimeout(timer)
@@ -105,9 +115,12 @@ self.addEventListener('fetch', (event) => {
         finishCacheWork()
         const cachedSource =
           cached.headers.get('X-Voice-Runtime-Source') ?? 'cache'
+        const cachedTotalBytes =
+          Number(cached.headers.get('X-Voice-Runtime-Total-Bytes')) || 0
         await broadcastRuntimeSource(
           cachedSource,
           getRuntimeFileName(event.request.url),
+          cachedTotalBytes,
         )
         return cached
       }

@@ -8,18 +8,21 @@ afterEach(() => {
 describe('parseKokoroProgress', () => {
   it('解析 Emscripten 模型下载进度', () => {
     expect(
-      parseKokoroProgress('Downloading data... (107660811/215321623)'),
+      parseKokoroProgress('Downloading data... (52428800/104857600)'),
     ).toEqual({
-      percent: (107660811 / 215321623) * 100,
-      downloadedBytes: 107660811,
-      totalBytes: 215321623,
-      label: 'Downloading data... (107660811/215321623)',
+      percent: 50,
+      downloadedBytes: 52428800,
+      totalBytes: 104857600,
+      label: 'Downloading data... (52428800/104857600)',
     })
   })
 
   it('压缩传输分母偏小时仍使用模型真实大小且不超过百分之百', () => {
     expect(
-      parseKokoroProgress('Downloading data... (173748224/147010355)'),
+      parseKokoroProgress(
+        'Downloading data... (173748224/147010355)',
+        215321623,
+      ),
     ).toEqual({
       percent: (173748224 / 215321623) * 100,
       downloadedBytes: 173748224,
@@ -30,7 +33,10 @@ describe('parseKokoroProgress', () => {
 
   it('异常累计值超过模型大小时限制为百分之百', () => {
     expect(
-      parseKokoroProgress('Downloading data... (300000000/147010355)'),
+      parseKokoroProgress(
+        'Downloading data... (300000000/147010355)',
+        215321623,
+      ),
     ).toEqual({
       percent: 100,
       downloadedBytes: 215321623,

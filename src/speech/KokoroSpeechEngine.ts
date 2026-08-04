@@ -22,18 +22,27 @@ type WorkerMessage =
     }
   | { type: 'error'; message: string }
 
+interface ServiceWorkerRuntimeMessage {
+  type: 'voice-runtime-source'
+  source: string
+  fileName: string
+  totalBytes?: number
+}
+
 const CACHE_NAME = 'github-markdown-reader-kokoro-v7'
-const KOKORO_DATA_BYTES = 215321623
 
 /** 将 Emscripten 下载状态解析为播放器可展示的进度。 */
-export function parseKokoroProgress(status: string): SpeechProgress {
+export function parseKokoroProgress(
+  status: string,
+  actualTotalBytes = 0,
+): SpeechProgress {
   const match = status.match(/Downloading data\.\.\. \((\d+)\/(\d+)\)/)
   if (!match) {
     return { percent: 0, downloadedBytes: 0, totalBytes: 0, label: status }
   }
   const downloadedBytes = Number(match[1])
   const reportedTotalBytes = Number(match[2])
-  const totalBytes = Math.max(reportedTotalBytes, KOKORO_DATA_BYTES)
+  const totalBytes = Math.max(reportedTotalBytes, actualTotalBytes)
   const visibleDownloadedBytes = Math.min(downloadedBytes, totalBytes)
   return {
     percent:
@@ -61,6 +70,15 @@ export class KokoroSpeechEngine implements SpeechEngine {
   private queue: GenerationTask[] = []
   private prepared = new Map<string, Promise<GeneratedAudio>>()
   private playbackToken = 0
+  private runtimeTotalBytes = 0
+
+  /** 注册 Service Worker 资源消息，动态获取当前模型文件的真实大小。 */
+  constructor() {
+    navigator.serviceWorker?.addEventListener(
+      'message',
+      this.handleServiceWorkerMessage,
+    )
+  }
 
   /** 在用户点击播放的同步阶段创建并唤醒音频上下文，避免异步下载后被自动播放策略拦截。 */
   activate(): void {
@@ -177,6 +195,10 @@ export class KokoroSpeechEngine implements SpeechEngine {
     this.activeTask = null
     this.queue = []
     this.prepared.clear()
+    navigator.serviceWorker?.removeEventListener(
+      'message',
+      this.handleServiceWorkerMessage,
+    )
   }
 
   /** 删除浏览器中缓存的 Kokoro 模型与运行时文件。 */
@@ -188,7 +210,9 @@ export class KokoroSpeechEngine implements SpeechEngine {
   /** 处理 Worker 初始化、生成结果和错误消息。 */
   private handleWorkerMessage(message: WorkerMessage): void {
     if (message.type === 'sherpa-onnx-tts-progress') {
-      this.progressListener?.(parseKokoroProgress(message.status))
+      this.progressListener?.(
+        parseKokoroProgress(message.status, this.runtimeTotalBytes),
+      )
       return
     }
     if (message.type === 'sherpa-onnx-tts-ready') {
@@ -215,6 +239,18 @@ export class KokoroSpeechEngine implements SpeechEngine {
       this.activeTask = null
       this.pumpQueue()
     }
+  }
+
+  /** 接收 Service Worker 广播的模型来源与实际 Content-Length。 */
+  private handleServiceWorkerMessage = (event: MessageEvent): void => {
+    const message = event.data as ServiceWorkerRuntimeMessage
+    if (
+      message?.type !== 'voice-runtime-source' ||
+      !message.fileName.endsWith('.data') ||
+      !message.totalBytes
+    )
+      return
+    this.runtimeTotalBytes = message.totalBytes
   }
 
   /** 结束初始化并清理不可用的 Worker。 */
