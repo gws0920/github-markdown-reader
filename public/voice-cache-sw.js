@@ -63,6 +63,7 @@ function getResponseTotalBytes(response) {
 /** 为运行时响应增加实际资源来源标记，便于浏览器诊断缓存与回退行为。 */
 function markRuntimeSource(response, source) {
   const headers = new Headers(response.headers)
+  headers.delete('vary')
   headers.set('X-Voice-Runtime-Source', source)
   const totalBytes = getResponseTotalBytes(response)
   if (Number.isFinite(totalBytes) && totalBytes > 0) {
@@ -73,6 +74,30 @@ function markRuntimeSource(response, source) {
     statusText: response.statusText,
     headers,
   })
+}
+
+/** 为返回页面的响应标记本次是否命中 Cache Storage。 */
+function markRuntimeCache(response, cacheStatus) {
+  const headers = new Headers(response.headers)
+  headers.set('X-Voice-Runtime-Cache', cacheStatus)
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  })
+}
+
+/** 广播缓存写入结果，便于控制台诊断配额不足或响应不可缓存等问题。 */
+async function broadcastCacheResult(fileName, status, message = '') {
+  const clients = await self.clients.matchAll({ type: 'window' })
+  clients.forEach((client) =>
+    client.postMessage({
+      type: 'voice-runtime-cache',
+      fileName,
+      status,
+      message,
+    }),
+  )
 }
 
 /** 在限定时间内尝试公共模型 CDN，失败时由调用方切换 Pages 同源资源。 */
@@ -130,13 +155,29 @@ self.addEventListener('fetch', (event) => {
           getRuntimeFileName(event.request.url),
           cachedTotalBytes,
         )
-        return cached
+        return markRuntimeCache(cached, 'hit')
       }
       try {
-        const response = await fetchRuntimeAsset(event.request)
+        const response = markRuntimeCache(
+          await fetchRuntimeAsset(event.request),
+          'miss',
+        )
         if (response.ok) {
           void cache
             .put(event.request, response.clone())
+            .then(() =>
+              broadcastCacheResult(
+                getRuntimeFileName(event.request.url),
+                'stored',
+              ),
+            )
+            .catch((error) =>
+              broadcastCacheResult(
+                getRuntimeFileName(event.request.url),
+                'failed',
+                error instanceof Error ? error.message : String(error),
+              ),
+            )
             .finally(finishCacheWork)
         } else {
           finishCacheWork()

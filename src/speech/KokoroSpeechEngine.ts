@@ -83,6 +83,7 @@ export class KokoroSpeechEngine implements SpeechEngine {
   /** 在用户点击播放的同步阶段创建并唤醒音频上下文，避免异步下载后被自动播放策略拦截。 */
   activate(): void {
     if (typeof AudioContext === 'undefined') return
+    void navigator.storage?.persist?.()
     this.audioContext ??= new AudioContext()
     if (this.audioContext.state === 'suspended') {
       void this.audioContext.resume()
