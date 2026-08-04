@@ -39,7 +39,7 @@ jobs:
         run: |
           mkdir --parents dist/voice-runtime
           if gh release view voice-runtime-v1 >/dev/null 2>&1; then
-            gh release download voice-runtime-v1 --dir dist/voice-runtime
+            gh release download voice-runtime-v1 --dir dist/voice-runtime --clobber
             if [ ! -f dist/voice-runtime/voice-runtime-manifest.json ]; then
               python3 - <<'PY'
               import hashlib
