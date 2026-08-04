@@ -39,7 +39,22 @@ jobs:
         run: |
           mkdir --parents dist/voice-runtime
           if gh release view voice-runtime-v1 >/dev/null 2>&1; then
-            gh release download voice-runtime-v1 --dir dist/voice-runtime --clobber
+            release_base="https://github.com/${{ github.repository }}/releases/download/voice-runtime-v1"
+            for file in \
+              sherpa-onnx-tts.js \
+              sherpa-onnx-tts.worker.js \
+              sherpa-onnx-wasm-main-tts.js \
+              sherpa-onnx-wasm-main-tts.wasm \
+              sherpa-onnx-wasm-main-tts.data \
+              LICENSE.sherpa-onnx.txt \
+              LICENSE.kokoro.txt; do
+              curl --fail --location --retry 3 \
+                "$release_base/$file" \
+                --output "dist/voice-runtime/$file"
+            done
+            curl --fail --location --retry 3 \
+              "$release_base/voice-runtime-manifest.json" \
+              --output dist/voice-runtime/voice-runtime-manifest.json || true
             if [ ! -f dist/voice-runtime/voice-runtime-manifest.json ]; then
               python3 - <<'PY'
               import hashlib
