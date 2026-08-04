@@ -33,6 +33,7 @@ interface SpeechReaderResult {
   play: () => void
   pause: () => void
   retry: () => void
+  selectEngine: (kind: SpeechEngineKind) => void
   retryNaturalVoice: () => void
   cancelNaturalVoice: () => void
   clearNaturalVoiceCache: () => Promise<boolean>
@@ -51,7 +52,7 @@ interface SpeechReaderResult {
   setContinuous: (continuous: boolean) => void
 }
 
-/** 提供 Kokoro 优先、系统语音回退的逐句朗读状态机。 */
+/** 提供系统语音默认、本地自然语音可手动切换的逐句朗读状态机。 */
 export function useSpeechReader({
   chapters,
   initialChapterIndex = 0,
@@ -67,8 +68,8 @@ export function useSpeechReader({
   const [error, setError] = useState('')
   const [fallbackReason, setFallbackReason] = useState('')
   const [diagnostic, setDiagnostic] = useState('')
-  const [engineKind, setEngineKind] = useState<SpeechEngineKind>('kokoro')
-  const [engineLabel, setEngineLabel] = useState('本地自然女声')
+  const [engineKind, setEngineKind] = useState<SpeechEngineKind>('browser')
+  const [engineLabel, setEngineLabel] = useState('系统语音')
   const [progress, setProgress] = useState<SpeechProgress | null>(null)
   const [chapterIndex, setChapterIndex] = useState(initialChapterIndex)
   const [sentenceIndex, setSentenceIndex] = useState(initialSentenceIndex)
@@ -80,7 +81,7 @@ export function useSpeechReader({
   const rateRef = useRef(initialRate)
   const continuousRef = useRef(initialContinuous)
   const chaptersRef = useRef(chapters)
-  const engineRef = useRef<SpeechEngine>(new KokoroSpeechEngine())
+  const engineRef = useRef<SpeechEngine>(new BrowserSpeechEngine())
   const initializedRef = useRef(false)
   const speakCurrentRef = useRef<() => void>(() => undefined)
 
@@ -303,6 +304,29 @@ export function useSpeechReader({
     speakCurrentRef.current()
   }, [])
 
+  /** 根据用户选择切换语音引擎，播放中切换时从当前句重新开始。 */
+  const selectEngine = useCallback(
+    (kind: SpeechEngineKind) => {
+      if (engineRef.current.kind === kind) return
+      const wasPlaying = statusRef.current === 'playing'
+      engineRef.current.destroy()
+      engineRef.current =
+        kind === 'kokoro' ? new KokoroSpeechEngine() : new BrowserSpeechEngine()
+      initializedRef.current = false
+      setEngineKind(kind)
+      setEngineLabel(kind === 'kokoro' ? '本地自然女声（实验）' : '系统语音')
+      setError('')
+      setDiagnostic('')
+      setFallbackReason('')
+      setProgress(null)
+      updateStatus('idle')
+      if (wasPlaying) {
+        window.setTimeout(() => speakCurrentRef.current(), 30)
+      }
+    },
+    [updateStatus],
+  )
+
   /** 重新创建 Kokoro 引擎并尝试恢复本地自然语音。 */
   const retryNaturalVoice = useCallback(() => {
     engineRef.current.destroy()
@@ -442,6 +466,7 @@ export function useSpeechReader({
     play,
     pause,
     retry,
+    selectEngine,
     retryNaturalVoice,
     cancelNaturalVoice,
     clearNaturalVoiceCache,

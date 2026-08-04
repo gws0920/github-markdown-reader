@@ -500,10 +500,24 @@ export function ReaderWorkspace({
               ))}
             </select>
           </label>
-          <div className={`engine-status engine-status--${reader.engineKind}`}>
+          <label
+            className={`engine-status engine-status--${reader.engineKind}`}
+          >
             <Sparkles aria-hidden="true" />
-            <span>{reader.engineLabel}</span>
-          </div>
+            <span className="sr-only">语音模式</span>
+            <select
+              aria-label="语音模式"
+              value={reader.engineKind}
+              onChange={(event) =>
+                reader.selectEngine(
+                  event.target.value === 'kokoro' ? 'kokoro' : 'browser',
+                )
+              }
+            >
+              <option value="browser">系统语音（默认）</option>
+              <option value="kokoro">本地自然语音（实验）</option>
+            </select>
+          </label>
           <label className="continuous-toggle">
             <input
               type="checkbox"

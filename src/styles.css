@@ -645,13 +645,21 @@ a {
   display: flex;
   align-items: center;
   gap: 7px;
-  padding: 0 10px;
+  padding: 0 4px 0 10px;
   border: 1px solid var(--line);
   font-size: 0.72rem;
   white-space: nowrap;
 }
 .engine-status > svg {
   width: 17px;
+  flex: 0 0 auto;
+}
+.engine-status select {
+  max-width: 175px;
+  height: 40px;
+  padding-left: 0;
+  border: 0;
+  background-color: transparent;
 }
 .engine-status--kokoro {
   color: var(--accent);

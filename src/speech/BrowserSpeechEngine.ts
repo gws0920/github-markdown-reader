@@ -3,7 +3,7 @@ import type { SpeechEngine, SpeechProgress, SpeechRequest } from './types'
 /** 使用浏览器 Web Speech API 提供无需模型下载的兼容朗读能力。 */
 export class BrowserSpeechEngine implements SpeechEngine {
   readonly kind = 'browser' as const
-  readonly label = '系统语音（兼容模式）'
+  readonly label = '系统语音'
   private utterance: SpeechSynthesisUtterance | null = null
   private voice: SpeechSynthesisVoice | null = null
 

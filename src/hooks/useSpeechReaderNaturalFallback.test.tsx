@@ -115,6 +115,7 @@ describe('useSpeechReader natural voice recovery', () => {
       useSpeechReader({ chapters: [chapter] }),
     )
 
+    act(() => result.current.selectEngine('kokoro'))
     act(() => result.current.play())
 
     await waitFor(() => expect(speak).toHaveBeenCalledOnce())
@@ -122,5 +123,18 @@ describe('useSpeechReader natural voice recovery', () => {
     expect(result.current.status).toBe('playing')
     expect(result.current.fallbackReason).toContain('mock generation failed')
     expect(result.current.diagnostic).toContain('mock generation failed')
+  })
+
+  it('默认使用系统语音且无需初始化本地模型', async () => {
+    const { result } = renderHook(() =>
+      useSpeechReader({ chapters: [chapter] }),
+    )
+
+    expect(result.current.engineKind).toBe('browser')
+    expect(result.current.engineLabel).toBe('系统语音')
+    act(() => result.current.play())
+
+    await waitFor(() => expect(speak).toHaveBeenCalledOnce())
+    expect(result.current.status).toBe('playing')
   })
 })
