@@ -22,6 +22,7 @@ interface SpeechReaderResult {
   status: PlaybackStatus
   error: string
   fallbackReason: string
+  diagnostic: string
   engineKind: SpeechEngineKind
   engineLabel: string
   progress: SpeechProgress | null
@@ -65,6 +66,7 @@ export function useSpeechReader({
   const [status, setStatus] = useState<PlaybackStatus>('idle')
   const [error, setError] = useState('')
   const [fallbackReason, setFallbackReason] = useState('')
+  const [diagnostic, setDiagnostic] = useState('')
   const [engineKind, setEngineKind] = useState<SpeechEngineKind>('kokoro')
   const [engineLabel, setEngineLabel] = useState('本地自然女声')
   const [progress, setProgress] = useState<SpeechProgress | null>(null)
@@ -139,7 +141,7 @@ export function useSpeechReader({
 
   /** 切换到系统语音并记录高质量语音不可用的原因。 */
   const switchToBrowserEngine = useCallback(
-    async (reason: string): Promise<void> => {
+    async (reason: string, details = reason): Promise<void> => {
       engineRef.current.destroy()
       const browserEngine = new BrowserSpeechEngine()
       await browserEngine.initialize()
@@ -148,6 +150,7 @@ export function useSpeechReader({
       setEngineKind(browserEngine.kind)
       setEngineLabel(browserEngine.label)
       setFallbackReason(reason)
+      setDiagnostic(details)
       setProgress(null)
     },
     [],
@@ -177,9 +180,43 @@ export function useSpeechReader({
         initializationError instanceof Error
           ? initializationError.message
           : '本地自然语音初始化失败。'
-      await switchToBrowserEngine(reason)
+      const details =
+        initializationError instanceof Error
+          ? (initializationError.stack ?? initializationError.message)
+          : String(initializationError)
+      await switchToBrowserEngine(reason, details)
     }
   }, [switchToBrowserEngine])
+
+  /** 本地语音生成失败时切换系统语音，并自动重播当前句。 */
+  const recoverSpeechFailure = useCallback(
+    async (speechError: Error): Promise<void> => {
+      const details = speechError.stack ?? speechError.message
+      if (engineRef.current.kind !== 'kokoro') {
+        setError(speechError.message)
+        setDiagnostic(details)
+        updateStatus('error')
+        return
+      }
+      try {
+        await switchToBrowserEngine(
+          `本地自然语音播放失败：${speechError.message}`,
+          details,
+        )
+        updateStatus('idle')
+        window.setTimeout(() => speakCurrentRef.current(), 30)
+      } catch (fallbackError) {
+        const fallbackDetails =
+          fallbackError instanceof Error
+            ? (fallbackError.stack ?? fallbackError.message)
+            : String(fallbackError)
+        setError('本地自然语音和系统语音均无法启动。')
+        setDiagnostic(`${details}\n\n系统语音回退失败：\n${fallbackDetails}`)
+        updateStatus('error')
+      }
+    },
+    [switchToBrowserEngine, updateStatus],
+  )
 
   /** 播放当前句，并在音频真正开始后更新高亮与预生成下一句。 */
   const speakCurrent = useCallback(async () => {
@@ -203,6 +240,7 @@ export function useSpeechReader({
         text: sentence.text,
         rate: rateRef.current,
         onStart: () => {
+          setProgress(null)
           updateStatus('playing')
           const nextText = getNextSentenceText()
           if (nextText) engineRef.current.prepare(nextText, rateRef.current)
@@ -214,20 +252,21 @@ export function useSpeechReader({
           else updateStatus('idle')
         },
         onError: (speechError) => {
-          setError(speechError.message)
-          updateStatus('error')
+          void recoverSpeechFailure(speechError)
         },
       })
     } catch (speechError) {
-      setError(
-        speechError instanceof Error ? speechError.message : '语音播放失败。',
+      void recoverSpeechFailure(
+        speechError instanceof Error
+          ? speechError
+          : new Error('语音播放失败。'),
       )
-      updateStatus('error')
     }
   }, [
     advancePosition,
     ensureEngine,
     getNextSentenceText,
+    recoverSpeechFailure,
     supported,
     updateStatus,
   ])
@@ -386,6 +425,7 @@ export function useSpeechReader({
     status,
     error,
     fallbackReason,
+    diagnostic,
     engineKind,
     engineLabel,
     progress,

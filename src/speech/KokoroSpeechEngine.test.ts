@@ -74,4 +74,39 @@ describe('KokoroSpeechEngine activation', () => {
     expect(AudioContextMock).toHaveBeenCalledTimes(1)
     expect(resume).toHaveBeenCalledTimes(2)
   })
+
+  it('首句生成超过一分钟时终止 Worker 并返回明确错误', async () => {
+    vi.useFakeTimers()
+    const terminate = vi.fn()
+    const onError = vi.fn()
+    const engine = new KokoroSpeechEngine()
+    const internals = engine as unknown as {
+      initializePromise: Promise<void>
+      progressListener: (progress: unknown) => void
+      prepared: Map<string, Promise<never>>
+      worker: { terminate: () => void }
+    }
+    internals.initializePromise = Promise.resolve()
+    internals.progressListener = vi.fn()
+    internals.worker = { terminate }
+    internals.prepared.set('1:测试句子。', new Promise(() => undefined))
+
+    const speaking = engine.speak({
+      text: '测试句子。',
+      rate: 1,
+      onStart: vi.fn(),
+      onEnd: vi.fn(),
+      onError,
+    })
+    await vi.advanceTimersByTimeAsync(60_000)
+    await speaking
+
+    expect(terminate).toHaveBeenCalledOnce()
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining('生成超过 60 秒'),
+      }),
+    )
+    vi.useRealTimers()
+  })
 })

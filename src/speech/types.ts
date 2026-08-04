@@ -5,6 +5,7 @@ export type SpeechProgressPhase =
   | 'loading-model'
   | 'starting-runtime'
   | 'initializing-tts'
+  | 'generating-audio'
 
 export interface SpeechProgress {
   phase: SpeechProgressPhase

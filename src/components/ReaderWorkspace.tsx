@@ -435,9 +435,17 @@ export function ReaderWorkspace({
             <span style={{ width: `${progress}%` }} />
           </div>
           {reader.error ? (
-            <button className="player__error" onClick={reader.retry}>
-              {reader.error} <RotateCcw aria-hidden="true" />
-            </button>
+            <div className="player__failure" role="alert">
+              <button className="player__error" onClick={reader.retry}>
+                {reader.error} <RotateCcw aria-hidden="true" />
+              </button>
+              {reader.diagnostic ? (
+                <details>
+                  <summary>查看错误详情</summary>
+                  <pre>{reader.diagnostic}</pre>
+                </details>
+              ) : null}
+            </div>
           ) : null}
           {reader.progress ? (
             <div className="player__notice" role="status">
@@ -468,6 +476,12 @@ export function ReaderWorkspace({
             >
               <span>{reader.fallbackReason} 已切换到系统语音。</span>
               <button onClick={reader.retryNaturalVoice}>重试自然语音</button>
+              {reader.diagnostic ? (
+                <details>
+                  <summary>错误详情</summary>
+                  <pre>{reader.diagnostic}</pre>
+                </details>
+              ) : null}
             </div>
           ) : null}
         </div>

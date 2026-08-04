@@ -549,6 +549,18 @@ async function handleRegularRuntimeRequest(request) {
 
 /** 处理页面发来的缓存清理请求，并通过 MessagePort 返回结果。 */
 self.addEventListener('message', (event) => {
+  if (event.data?.type === 'activate-voice-runtime-now') {
+    event.waitUntil(self.skipWaiting())
+    return
+  }
+  if (event.data?.type === 'claim-voice-runtime-clients') {
+    event.waitUntil(
+      self.clients
+        .claim()
+        .then(() => event.ports[0]?.postMessage({ ok: true })),
+    )
+    return
+  }
   if (event.data?.type === 'get-voice-runtime-cache-info') {
     event.waitUntil(
       Promise.all([loadRuntimeManifest(), readTotalChunkBytes()])

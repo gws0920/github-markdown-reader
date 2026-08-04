@@ -598,6 +598,39 @@ a {
 .player__error svg {
   width: 13px;
 }
+.player__failure {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 18px);
+  max-width: min(760px, 86vw);
+  padding: 10px 12px;
+  border: 1px solid var(--accent);
+  background: var(--paper);
+}
+.player__failure details,
+.player__notice details {
+  width: 100%;
+  margin-top: 8px;
+  color: var(--muted);
+}
+.player__failure summary,
+.player__notice summary {
+  cursor: pointer;
+  font-size: 0.68rem;
+}
+.player__failure pre,
+.player__notice pre {
+  max-height: 180px;
+  margin: 8px 0 0;
+  padding: 10px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  background: var(--white);
+  color: var(--ink);
+  font-size: 0.65rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
 .player__settings select {
   max-width: 170px;
   height: 42px;
@@ -635,6 +668,7 @@ a {
   align-items: center;
   gap: 14px;
   font-size: 0.72rem;
+  flex-wrap: wrap;
 }
 .player__notice button {
   min-height: 30px;

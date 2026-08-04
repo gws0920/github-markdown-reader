@@ -55,6 +55,7 @@ interface VoiceCacheResponse {
 
 const CACHE_NAME = 'github-markdown-reader-voice-runtime-v8'
 const INITIALIZATION_TIMEOUT_MS = 5 * 60 * 1000
+const GENERATION_TIMEOUT_MS = 60 * 1000
 
 /** 根据初始化阶段生成清晰的用户提示文案。 */
 function getPhaseLabel(phase: SpeechProgressPhase): string {
@@ -64,6 +65,7 @@ function getPhaseLabel(phase: SpeechProgressPhase): string {
     'loading-model': '下载完成，正在载入语音模型。',
     'starting-runtime': '正在启动 WebAssembly 语音运行时。',
     'initializing-tts': '正在初始化中文词典、声线与推理引擎。',
+    'generating-audio': '语音模型已就绪，正在生成当前句音频。',
   }
   return labels[phase]
 }
@@ -157,8 +159,17 @@ export class KokoroSpeechEngine implements SpeechEngine {
             this.handleWorkerMessage(event.data)
           },
         )
-        this.worker.addEventListener('error', () => {
-          this.failInitialization(new Error('本地语音运行时加载失败。'))
+        this.worker.addEventListener('error', (event) => {
+          this.failInitialization(
+            new Error(
+              `本地语音运行时加载失败：${event.message || 'Worker 脚本异常'}（${event.filename || workerUrl}:${event.lineno || 0}）`,
+            ),
+          )
+        })
+        this.worker.addEventListener('messageerror', () => {
+          this.failInitialization(
+            new Error('本地语音 Worker 返回了无法解析的消息。'),
+          )
         })
       })
     })().catch((error) => {
@@ -174,7 +185,10 @@ export class KokoroSpeechEngine implements SpeechEngine {
     this.stopAudioOnly()
     const token = ++this.playbackToken
     try {
-      const audio = await this.getPreparedOrGenerate(request.text, request.rate)
+      this.emitPhase('generating-audio')
+      const audio = await this.waitForGeneratedAudio(
+        this.getPreparedOrGenerate(request.text, request.rate),
+      )
       if (token !== this.playbackToken) return
       const context =
         this.audioContext ?? new AudioContext({ sampleRate: audio.sampleRate })
@@ -311,7 +325,6 @@ export class KokoroSpeechEngine implements SpeechEngine {
     }
     if (message.type === 'sherpa-onnx-tts-ready') {
       this.clearInitializationTimer()
-      this.progressListener = null
       this.initializeResolve?.()
       this.initializeResolve = null
       this.initializeReject = null
@@ -387,12 +400,41 @@ export class KokoroSpeechEngine implements SpeechEngine {
 
   /** 向 UI 发送不带下载字节的初始化阶段。 */
   private emitPhase(phase: SpeechProgressPhase): void {
+    const modelReady = phase === 'loading-model' || phase === 'generating-audio'
     this.progressListener?.({
       phase,
-      percent: phase === 'loading-model' ? 100 : 0,
-      downloadedBytes: phase === 'loading-model' ? this.runtimeTotalBytes : 0,
+      percent: modelReady ? 100 : 0,
+      downloadedBytes: modelReady ? this.runtimeTotalBytes : 0,
       totalBytes: this.runtimeTotalBytes,
       label: getPhaseLabel(phase),
+    })
+  }
+
+  /** 限制首句和后续句子的推理等待时间，超时后终止无法取消的同步 WASM Worker。 */
+  private waitForGeneratedAudio(
+    audioPromise: Promise<GeneratedAudio>,
+  ): Promise<GeneratedAudio> {
+    return new Promise((resolve, reject) => {
+      const timer = window.setTimeout(() => {
+        this.worker?.terminate()
+        this.worker = null
+        this.activeTask = null
+        reject(
+          new Error(
+            `本地自然语音生成超过 ${GENERATION_TIMEOUT_MS / 1000} 秒，已终止本次推理。`,
+          ),
+        )
+      }, GENERATION_TIMEOUT_MS)
+      audioPromise.then(
+        (audio) => {
+          window.clearTimeout(timer)
+          resolve(audio)
+        },
+        (error) => {
+          window.clearTimeout(timer)
+          reject(error)
+        },
+      )
     })
   }
 
@@ -430,7 +472,7 @@ export class KokoroSpeechEngine implements SpeechEngine {
     this.worker.postMessage({
       type: 'generate',
       text: task.text,
-      sid: 3,
+      sid: 0,
       speed: task.rate,
     })
   }
