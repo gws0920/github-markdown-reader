@@ -23,6 +23,7 @@ type WorkerMessage =
   | { type: 'error'; message: string }
 
 const CACHE_NAME = 'github-markdown-reader-kokoro-v6'
+const KOKORO_DATA_BYTES = 215321623
 
 /** 将 Emscripten 下载状态解析为播放器可展示的进度。 */
 export function parseKokoroProgress(status: string): SpeechProgress {
@@ -31,10 +32,15 @@ export function parseKokoroProgress(status: string): SpeechProgress {
     return { percent: 0, downloadedBytes: 0, totalBytes: 0, label: status }
   }
   const downloadedBytes = Number(match[1])
-  const totalBytes = Number(match[2])
+  const reportedTotalBytes = Number(match[2])
+  const totalBytes = Math.max(reportedTotalBytes, KOKORO_DATA_BYTES)
+  const visibleDownloadedBytes = Math.min(downloadedBytes, totalBytes)
   return {
-    percent: totalBytes > 0 ? (downloadedBytes / totalBytes) * 100 : 0,
-    downloadedBytes,
+    percent:
+      totalBytes > 0
+        ? Math.min(100, (visibleDownloadedBytes / totalBytes) * 100)
+        : 0,
+    downloadedBytes: visibleDownloadedBytes,
     totalBytes,
     label: status,
   }
