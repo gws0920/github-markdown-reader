@@ -52,11 +52,19 @@ function shouldUseReleaseCdn(fileName) {
   return fileName.endsWith('.data')
 }
 
+/** 从完整或分段响应头中提取资源总大小，优先采用 Content-Range 的完整长度。 */
+function getResponseTotalBytes(response) {
+  const contentRange = response.headers.get('content-range') ?? ''
+  const rangeMatch = contentRange.match(/\/(\d+)$/)
+  if (rangeMatch) return Number(rangeMatch[1])
+  return Number(response.headers.get('content-length')) || 0
+}
+
 /** 为运行时响应增加实际资源来源标记，便于浏览器诊断缓存与回退行为。 */
 function markRuntimeSource(response, source) {
   const headers = new Headers(response.headers)
   headers.set('X-Voice-Runtime-Source', source)
-  const totalBytes = Number(response.headers.get('content-length'))
+  const totalBytes = getResponseTotalBytes(response)
   if (Number.isFinite(totalBytes) && totalBytes > 0) {
     headers.set('X-Voice-Runtime-Total-Bytes', String(totalBytes))
   }
@@ -77,7 +85,7 @@ async function fetchCdnAsset(fileName, request) {
       signal: controller.signal,
     })
     if (!response.ok) throw new Error(`Voice CDN returned ${response.status}`)
-    const totalBytes = Number(response.headers.get('content-length')) || 0
+    const totalBytes = getResponseTotalBytes(response)
     await broadcastRuntimeSource('cdn', fileName, totalBytes)
     return markRuntimeSource(response, 'cdn')
   } finally {
