@@ -1,4 +1,4 @@
-const CACHE_NAME = 'github-markdown-reader-kokoro-v4'
+const CACHE_NAME = 'github-markdown-reader-kokoro-v5'
 
 /** 安装后立即接管当前页面，确保首次模型请求也可进入缓存。 */
 self.addEventListener('install', () => self.skipWaiting())
@@ -29,15 +29,32 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url)
   if (!url.pathname.includes('/voice-runtime/')) return
+  let finishCacheWork
+  const cacheWork = new Promise((resolve) => {
+    finishCacheWork = resolve
+  })
+  event.waitUntil(cacheWork)
   event.respondWith(
     caches.open(CACHE_NAME).then(async (cache) => {
       const cached = await cache.match(event.request)
-      if (cached) return cached
-      const response = await fetch(event.request)
-      if (response.ok) {
-        event.waitUntil(cache.put(event.request, response.clone()))
+      if (cached) {
+        finishCacheWork()
+        return cached
       }
-      return response
+      try {
+        const response = await fetch(event.request)
+        if (response.ok) {
+          void cache
+            .put(event.request, response.clone())
+            .finally(finishCacheWork)
+        } else {
+          finishCacheWork()
+        }
+        return response
+      } catch (error) {
+        finishCacheWork()
+        throw error
+      }
     }),
   )
 })
