@@ -1,4 +1,4 @@
-const CACHE_NAME = 'github-markdown-reader-voice-runtime-v8'
+const CACHE_NAME = 'github-markdown-reader-voice-runtime-v9'
 const DB_NAME = 'github-markdown-reader-voice-chunks'
 const DB_VERSION = 1
 const CHUNK_STORE = 'chunks'
@@ -522,28 +522,62 @@ function markRuntimeResponse(response, source, cacheStatus) {
   })
 }
 
+/** 判断普通运行时响应是否具有与文件扩展名匹配的可执行 MIME 类型。 */
+function isValidRuntimeResponse(request, response) {
+  if (!response.ok || response.status !== 200) return false
+  const pathname = new URL(request.url).pathname
+  const contentType = response.headers.get('content-type')?.toLowerCase() || ''
+  if (pathname.endsWith('.wasm'))
+    return contentType.includes('application/wasm')
+  if (pathname.endsWith('.json'))
+    return contentType.includes('application/json')
+  if (pathname.endsWith('.js')) {
+    return (
+      contentType.includes('javascript') ||
+      contentType.includes('application/ecmascript')
+    )
+  }
+  return !contentType.includes('text/html')
+}
+
+/** 广播损坏的运行时缓存或网络响应，便于页面和 Console 定位真实来源。 */
+function reportInvalidRuntimeResponse(request, response, source) {
+  const fileName = new URL(request.url).pathname.split('/').pop()
+  void broadcast({
+    type: 'voice-runtime-cache',
+    status: 'failed',
+    fileName,
+    message: `${source} 返回了无效的运行时响应：HTTP ${response.status}，Content-Type ${response.headers.get('content-type') || '未知'}。`,
+  })
+}
+
 /** 对 Worker、JS 和 WASM 使用整文件 Cache Storage 缓存，并返回独立缓存任务。 */
 async function handleRegularRuntimeRequest(request) {
   const cache = await caches.open(CACHE_NAME)
   const cached = await cache.match(request)
   if (cached) {
-    return {
-      response: markRuntimeResponse(cached, 'local-cache', 'hit'),
-      cacheTask: Promise.resolve(),
+    if (isValidRuntimeResponse(request, cached)) {
+      return {
+        response: markRuntimeResponse(cached, 'local-cache', 'hit'),
+        cacheTask: Promise.resolve(),
+      }
     }
+    reportInvalidRuntimeResponse(request, cached, '本地缓存')
+    await cache.delete(request)
   }
   const response = markRuntimeResponse(await fetch(request), 'pages', 'miss')
-  const cacheTask =
-    response.ok && response.status === 200
-      ? cache.put(request, response.clone()).catch((error) =>
-          broadcast({
-            type: 'voice-runtime-cache',
-            status: 'failed',
-            fileName: new URL(request.url).pathname.split('/').pop(),
-            message: error instanceof Error ? error.message : String(error),
-          }),
-        )
-      : Promise.resolve()
+  if (!isValidRuntimeResponse(request, response)) {
+    reportInvalidRuntimeResponse(request, response, '当前站点')
+    return { response, cacheTask: Promise.resolve() }
+  }
+  const cacheTask = cache.put(request, response.clone()).catch((error) =>
+    broadcast({
+      type: 'voice-runtime-cache',
+      status: 'failed',
+      fileName: new URL(request.url).pathname.split('/').pop(),
+      message: error instanceof Error ? error.message : String(error),
+    }),
+  )
   return { response, cacheTask }
 }
 

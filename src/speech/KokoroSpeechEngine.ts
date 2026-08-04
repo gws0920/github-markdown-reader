@@ -53,7 +53,7 @@ interface VoiceCacheResponse {
   message?: string
 }
 
-const CACHE_NAME = 'github-markdown-reader-voice-runtime-v8'
+const CACHE_NAME = 'github-markdown-reader-voice-runtime-v9'
 const INITIALIZATION_TIMEOUT_MS = 5 * 60 * 1000
 const GENERATION_TIMEOUT_MS = 60 * 1000
 
