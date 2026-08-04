@@ -1,10 +1,21 @@
 export type SpeechEngineKind = 'kokoro' | 'browser'
+export type SpeechProgressPhase =
+  | 'checking-cache'
+  | 'downloading-model'
+  | 'loading-model'
+  | 'starting-runtime'
+  | 'initializing-tts'
 
 export interface SpeechProgress {
+  phase: SpeechProgressPhase
   percent: number
   downloadedBytes: number
   totalBytes: number
   label: string
+  source?: 'cdn' | 'pages-fallback' | 'local-resume' | 'local-cache'
+  cachedBytes?: number
+  chunkIndex?: number
+  chunkCount?: number
 }
 
 export interface SpeechCallbacks {

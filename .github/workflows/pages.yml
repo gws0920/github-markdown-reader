@@ -40,6 +40,39 @@ jobs:
           mkdir --parents dist/voice-runtime
           if gh release view voice-runtime-v1 >/dev/null 2>&1; then
             gh release download voice-runtime-v1 --dir dist/voice-runtime
+            if [ ! -f dist/voice-runtime/voice-runtime-manifest.json ]; then
+              python3 - <<'PY'
+              import hashlib
+              import json
+              from pathlib import Path
+
+              chunk_size = 4 * 1024 * 1024
+              runtime_dir = Path('dist/voice-runtime')
+              files = {}
+              for path in sorted(runtime_dir.iterdir()):
+                  if not path.is_file():
+                      continue
+                  digest = hashlib.sha256()
+                  chunks = []
+                  with path.open('rb') as source:
+                      while True:
+                          chunk = source.read(chunk_size)
+                          if not chunk:
+                              break
+                          digest.update(chunk)
+                          chunks.append(hashlib.sha256(chunk).hexdigest())
+                  files[path.name] = {
+                      'size': path.stat().st_size,
+                      'sha256': digest.hexdigest(),
+                      'chunkSize': chunk_size,
+                      'chunks': chunks,
+                  }
+              manifest = {'version': 'voice-runtime-v2', 'files': files}
+              (runtime_dir / 'voice-runtime-manifest.json').write_text(
+                  json.dumps(manifest, ensure_ascii=False, separators=(',', ':'))
+              )
+              PY
+            fi
           else
             echo "Voice runtime release is not available yet; browser speech fallback remains enabled."
           fi

@@ -1,4 +1,13 @@
-import type { SpeechEngine, SpeechProgress, SpeechRequest } from './types'
+import {
+  requestVoiceCache,
+  waitForVoiceCacheControl,
+} from '../lib/voiceServiceWorker'
+import type {
+  SpeechEngine,
+  SpeechProgress,
+  SpeechProgressPhase,
+  SpeechRequest,
+} from './types'
 
 interface GeneratedAudio {
   samples: Float32Array
@@ -14,6 +23,7 @@ interface GenerationTask {
 
 type WorkerMessage =
   | { type: 'sherpa-onnx-tts-progress'; status: string }
+  | { type: 'sherpa-onnx-tts-phase'; phase: SpeechProgressPhase }
   | { type: 'sherpa-onnx-tts-ready'; numSpeakers: number }
   | {
       type: 'sherpa-onnx-tts-result'
@@ -23,13 +33,40 @@ type WorkerMessage =
   | { type: 'error'; message: string }
 
 interface ServiceWorkerRuntimeMessage {
-  type: 'voice-runtime-source'
-  source: string
+  type: 'voice-runtime-progress' | 'voice-runtime-cache'
+  phase?: SpeechProgressPhase
+  source?: SpeechProgress['source']
   fileName: string
+  status?: 'stored' | 'failed'
+  message?: string
+  downloadedBytes?: number
+  cachedBytes?: number
   totalBytes?: number
+  chunkIndex?: number
+  chunkCount?: number
 }
 
-const CACHE_NAME = 'github-markdown-reader-kokoro-v7'
+interface VoiceCacheResponse {
+  ok: boolean
+  cachedBytes?: number
+  totalBytes?: number
+  message?: string
+}
+
+const CACHE_NAME = 'github-markdown-reader-voice-runtime-v8'
+const INITIALIZATION_TIMEOUT_MS = 5 * 60 * 1000
+
+/** 根据初始化阶段生成清晰的用户提示文案。 */
+function getPhaseLabel(phase: SpeechProgressPhase): string {
+  const labels: Record<SpeechProgressPhase, string> = {
+    'checking-cache': '正在检查本地语音缓存。',
+    'downloading-model': '正在下载本地自然语音模型。',
+    'loading-model': '下载完成，正在载入语音模型。',
+    'starting-runtime': '正在启动 WebAssembly 语音运行时。',
+    'initializing-tts': '正在初始化中文词典、声线与推理引擎。',
+  }
+  return labels[phase]
+}
 
 /** 将 Emscripten 下载状态解析为播放器可展示的进度。 */
 export function parseKokoroProgress(
@@ -38,20 +75,29 @@ export function parseKokoroProgress(
 ): SpeechProgress {
   const match = status.match(/Downloading data\.\.\. \((\d+)\/(\d+)\)/)
   if (!match) {
-    return { percent: 0, downloadedBytes: 0, totalBytes: 0, label: status }
+    return {
+      phase: 'starting-runtime',
+      percent: 0,
+      downloadedBytes: 0,
+      totalBytes: 0,
+      label: status || getPhaseLabel('starting-runtime'),
+    }
   }
   const downloadedBytes = Number(match[1])
   const reportedTotalBytes = Number(match[2])
   const totalBytes = Math.max(reportedTotalBytes, actualTotalBytes)
   const visibleDownloadedBytes = Math.min(downloadedBytes, totalBytes)
+  const percent =
+    totalBytes > 0
+      ? Math.min(100, (visibleDownloadedBytes / totalBytes) * 100)
+      : 0
   return {
-    percent:
-      totalBytes > 0
-        ? Math.min(100, (visibleDownloadedBytes / totalBytes) * 100)
-        : 0,
+    phase: percent >= 100 ? 'loading-model' : 'downloading-model',
+    percent,
     downloadedBytes: visibleDownloadedBytes,
     totalBytes,
-    label: status,
+    label:
+      percent >= 100 ? getPhaseLabel('loading-model') : '正在下载语音模型。',
   }
 }
 
@@ -71,6 +117,7 @@ export class KokoroSpeechEngine implements SpeechEngine {
   private prepared = new Map<string, Promise<GeneratedAudio>>()
   private playbackToken = 0
   private runtimeTotalBytes = 0
+  private initializationTimer: number | null = null
 
   /** 注册 Service Worker 资源消息，动态获取当前模型文件的真实大小。 */
   constructor() {
@@ -96,20 +143,27 @@ export class KokoroSpeechEngine implements SpeechEngine {
   ): Promise<void> {
     if (this.initializePromise) return this.initializePromise
     this.progressListener = onProgress ?? null
-    this.initializePromise = new Promise<void>((resolve, reject) => {
-      this.initializeResolve = resolve
-      this.initializeReject = reject
-      const workerUrl = `${import.meta.env.BASE_URL}voice-runtime/sherpa-onnx-tts.worker.js`
-      this.worker = new Worker(workerUrl, { type: 'module' })
-      this.worker.addEventListener(
-        'message',
-        (event: MessageEvent<WorkerMessage>) => {
-          this.handleWorkerMessage(event.data)
-        },
-      )
-      this.worker.addEventListener('error', () => {
-        this.failInitialization(new Error('本地语音运行时加载失败。'))
+    this.initializePromise = (async () => {
+      this.emitPhase('checking-cache')
+      await waitForVoiceCacheControl()
+      return new Promise<void>((resolve, reject) => {
+        this.initializeResolve = resolve
+        this.initializeReject = reject
+        const workerUrl = `${import.meta.env.BASE_URL}voice-runtime/sherpa-onnx-tts.worker.js`
+        this.worker = new Worker(workerUrl, { type: 'module' })
+        this.worker.addEventListener(
+          'message',
+          (event: MessageEvent<WorkerMessage>) => {
+            this.handleWorkerMessage(event.data)
+          },
+        )
+        this.worker.addEventListener('error', () => {
+          this.failInitialization(new Error('本地语音运行时加载失败。'))
+        })
       })
+    })().catch((error) => {
+      this.initializePromise = null
+      throw error
     })
     return this.initializePromise
   }
@@ -196,6 +250,7 @@ export class KokoroSpeechEngine implements SpeechEngine {
     this.activeTask = null
     this.queue = []
     this.prepared.clear()
+    this.clearInitializationTimer()
     navigator.serviceWorker?.removeEventListener(
       'message',
       this.handleServiceWorkerMessage,
@@ -204,19 +259,58 @@ export class KokoroSpeechEngine implements SpeechEngine {
 
   /** 删除浏览器中缓存的 Kokoro 模型与运行时文件。 */
   static async clearCache(): Promise<boolean> {
-    if (!('caches' in window)) return false
-    return window.caches.delete(CACHE_NAME)
+    const response = await requestVoiceCache<VoiceCacheResponse>(
+      {
+        type: 'clear-voice-runtime-cache',
+      },
+      60000,
+    )
+    return response.ok
+  }
+
+  /** 读取已经保存的模型分片大小，用于缓存清理确认。 */
+  static async getCacheInfo(): Promise<{
+    ok: boolean
+    cachedBytes: number
+    totalBytes: number
+    message?: string
+  }> {
+    const response = await requestVoiceCache<VoiceCacheResponse>(
+      {
+        type: 'get-voice-runtime-cache-info',
+      },
+      30000,
+    )
+    return {
+      ...response,
+      cachedBytes: response.cachedBytes ?? 0,
+      totalBytes: response.totalBytes ?? 0,
+    }
   }
 
   /** 处理 Worker 初始化、生成结果和错误消息。 */
   private handleWorkerMessage(message: WorkerMessage): void {
     if (message.type === 'sherpa-onnx-tts-progress') {
-      this.progressListener?.(
-        parseKokoroProgress(message.status, this.runtimeTotalBytes),
+      const progress = parseKokoroProgress(
+        message.status,
+        this.runtimeTotalBytes,
       )
+      this.progressListener?.(progress)
+      if (progress.phase === 'loading-model') this.startInitializationTimer()
+      return
+    }
+    if (message.type === 'sherpa-onnx-tts-phase') {
+      this.emitPhase(message.phase)
+      if (
+        message.phase === 'loading-model' ||
+        message.phase === 'initializing-tts'
+      ) {
+        this.startInitializationTimer()
+      }
       return
     }
     if (message.type === 'sherpa-onnx-tts-ready') {
+      this.clearInitializationTimer()
       this.progressListener = null
       this.initializeResolve?.()
       this.initializeResolve = null
@@ -245,23 +339,78 @@ export class KokoroSpeechEngine implements SpeechEngine {
   /** 接收 Service Worker 广播的模型来源与实际 Content-Length。 */
   private handleServiceWorkerMessage = (event: MessageEvent): void => {
     const message = event.data as ServiceWorkerRuntimeMessage
-    if (
-      message?.type !== 'voice-runtime-source' ||
-      !message.fileName.endsWith('.data') ||
-      !message.totalBytes
-    )
+    if (!message?.fileName?.endsWith('.data')) return
+    if (message.totalBytes) this.runtimeTotalBytes = message.totalBytes
+    if (message.type === 'voice-runtime-cache' && message.status === 'failed') {
+      this.progressListener?.({
+        phase: 'downloading-model',
+        percent: 0,
+        downloadedBytes: message.downloadedBytes ?? 0,
+        totalBytes: message.totalBytes ?? this.runtimeTotalBytes,
+        cachedBytes: message.cachedBytes,
+        label: `本次无法保存续传进度：${message.message ?? '缓存写入失败。'}`,
+      })
       return
-    this.runtimeTotalBytes = message.totalBytes
+    }
+    if (message.type !== 'voice-runtime-progress' || !message.phase) return
+    const totalBytes = message.totalBytes ?? this.runtimeTotalBytes
+    const downloadedBytes = message.downloadedBytes ?? 0
+    const percent =
+      totalBytes > 0 ? Math.min(100, (downloadedBytes / totalBytes) * 100) : 0
+    this.progressListener?.({
+      phase: message.phase,
+      percent,
+      downloadedBytes,
+      totalBytes,
+      cachedBytes: message.cachedBytes,
+      source: message.source,
+      chunkIndex: message.chunkIndex,
+      chunkCount: message.chunkCount,
+      label:
+        message.phase === 'checking-cache' && (message.cachedBytes ?? 0) > 0
+          ? `已缓存 ${((message.cachedBytes ?? 0) / 1024 / 1024).toFixed(1)} MB，准备继续下载。`
+          : getPhaseLabel(message.phase),
+    })
+    if (message.phase === 'loading-model') this.startInitializationTimer()
   }
 
   /** 结束初始化并清理不可用的 Worker。 */
   private failInitialization(error: Error): void {
+    this.clearInitializationTimer()
     this.initializeReject?.(error)
     this.initializeResolve = null
     this.initializeReject = null
     this.initializePromise = null
     this.worker?.terminate()
     this.worker = null
+  }
+
+  /** 向 UI 发送不带下载字节的初始化阶段。 */
+  private emitPhase(phase: SpeechProgressPhase): void {
+    this.progressListener?.({
+      phase,
+      percent: phase === 'loading-model' ? 100 : 0,
+      downloadedBytes: phase === 'loading-model' ? this.runtimeTotalBytes : 0,
+      totalBytes: this.runtimeTotalBytes,
+      label: getPhaseLabel(phase),
+    })
+  }
+
+  /** 从模型载入阶段启动五分钟初始化看门狗。 */
+  private startInitializationTimer(): void {
+    if (this.initializationTimer !== null) return
+    this.initializationTimer = window.setTimeout(() => {
+      this.failInitialization(
+        new Error('本地自然语音初始化超过 5 分钟，已自动回退。'),
+      )
+    }, INITIALIZATION_TIMEOUT_MS)
+  }
+
+  /** 清除初始化看门狗，避免 ready 或销毁后误触发。 */
+  private clearInitializationTimer(): void {
+    if (this.initializationTimer === null) return
+    window.clearTimeout(this.initializationTimer)
+    this.initializationTimer = null
   }
 
   /** 将文本生成请求加入单任务 Worker 队列。 */

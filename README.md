@@ -14,7 +14,8 @@
 - 自动发现、自然排序并连续播放章节
 - 中文和英文逐句切分，当前朗读句同步高亮
 - 首次播放时按需加载浏览器本地中文神经语音，失败时自动回退系统语音
-- 播放、暂停、停止、切句、切章、倍速和系统语音选择
+- 播放、暂停、恢复、切句、切章、倍速和连续播放
+- 4 MiB 模型分片断点续传，关闭页面后保留已完成进度
 - 本地保存章节位置及播放器偏好
 - Editorial 杂志式阅读排版和移动端目录抽屉
 - GitHub Actions 质量检查与 Pages 自动部署
@@ -37,6 +38,12 @@ npm run check
 ## 语音资源加速
 
 体积最大的本地语音模型优先从 Hugging Face 公共 CDN 下载，失败时自动回退到随 GitHub Pages 部署的仓库资源。仓库管理员可设置 GitHub Actions Secret `HF_TOKEN`，并按需设置 Variable `HF_REPO_ID`，随后手动运行 `Mirror Voice Runtime` 工作流，将 `voice-runtime-v1` Release 资源同步到公开 Dataset 仓库。默认目标为 `gws0920/github-markdown-reader-voice-runtime`。
+
+`.data` 模型按照 4 MiB 分片下载，每个完成分片在校验 SHA-256 后写入 IndexedDB。关闭页面或点击取消只会终止当前请求，已经完成的分片会在下次播放时继续使用；Worker、JavaScript 和 WebAssembly 文件仍使用 Cache Storage 整文件缓存。模型版本或文件摘要变化时，旧模型分片会自动淘汰。
+
+播放器会直接显示当前使用“本地续传”“CDN 下载”或“Pages 备用”，并区分缓存检查、模型下载、模型载入、运行时启动和 TTS 初始化阶段。初始化超过五分钟会自动切换到系统语音并继续朗读当前句。
+
+“清除语音缓存”会同时删除 IndexedDB 中的模型分片和 Cache Storage 中的运行时文件。Chrome DevTools 可在 **Application → IndexedDB → github-markdown-reader-voice-chunks** 查看模型分片，在 **Application → Cache Storage** 查看 Worker、JavaScript 和 WebAssembly 缓存。Network 面板中同源 `.data` 外层响应包含 `X-Voice-Runtime-Source`、`X-Voice-Runtime-Cache`、`X-Voice-Runtime-Resume-Bytes` 和 `X-Voice-Runtime-Total-Bytes`；Service Worker 发起的 Hugging Face Range 请求是内部下载请求。
 
 ## 支持的输入
 

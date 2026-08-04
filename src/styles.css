@@ -516,6 +516,34 @@ a {
 .icon-button svg {
   width: 19px;
 }
+.has-tooltip {
+  position: relative;
+}
+.has-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  z-index: 80;
+  left: 50%;
+  bottom: calc(100% + 10px);
+  padding: 6px 8px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.68rem;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 4px);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+.has-tooltip:hover::after,
+.has-tooltip:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
 .icon-button--primary {
   border-radius: 50%;
   background: var(--accent);
@@ -629,6 +657,54 @@ a {
 }
 .continuous-toggle input {
   accent-color: var(--accent);
+}
+.cache-dialog {
+  width: min(520px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid var(--ink);
+  background: var(--paper);
+  color: var(--ink);
+}
+.cache-dialog::backdrop {
+  background: rgb(23 23 19 / 58%);
+}
+.cache-dialog__sheet {
+  padding: 30px;
+}
+.cache-dialog h2 {
+  margin: 8px 0 14px;
+  font-family: 'Libre Bodoni', 'Songti SC', serif;
+  font-size: clamp(2rem, 6vw, 3rem);
+  font-weight: 500;
+}
+.cache-dialog p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.75;
+}
+.cache-dialog__message {
+  margin-top: 14px !important;
+  color: var(--accent) !important;
+}
+.cache-dialog__actions {
+  margin-top: 28px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.cache-dialog__actions button {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 1px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+}
+.cache-dialog__actions .cache-dialog__danger {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--white);
 }
 .spin {
   animation: spin 0.9s linear infinite;

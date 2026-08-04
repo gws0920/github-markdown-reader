@@ -8,6 +8,7 @@ on:
       - .github/workflows/build-voice-runtime.yml
 
 permissions:
+  actions: write
   contents: write
 
 jobs:
@@ -75,6 +76,31 @@ jobs:
           path.write_text(source.replace(marker, kokoro_case, 1))
           PY
 
+      - name: Add runtime phase events
+        working-directory: runtime-source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('wasm/tts/sherpa-onnx-tts.worker.js')
+          source = path.read_text()
+          runtime_marker = 'const Module = await createModule({'
+          tts_marker = 'try {\n  tts = createOfflineTts(Module);'
+          if runtime_marker not in source or tts_marker not in source:
+              raise SystemExit('Unable to locate runtime phase markers.')
+          source = source.replace(
+              runtime_marker,
+              'self.postMessage({ type: "sherpa-onnx-tts-phase", phase: "starting-runtime" });\n\nconst Module = await createModule({',
+              1,
+          )
+          source = source.replace(
+              tts_marker,
+              'try {\n  self.postMessage({ type: "sherpa-onnx-tts-phase", phase: "initializing-tts" });\n  tts = createOfflineTts(Module);',
+              1,
+          )
+          path.write_text(source)
+          PY
+
       - name: Build WebAssembly runtime
         working-directory: runtime-source
         run: ./build-wasm-simd-tts.sh
@@ -89,6 +115,37 @@ jobs:
           cp runtime-source/build-wasm-simd-tts/install/bin/wasm/tts/sherpa-onnx-wasm-main-tts.data voice-runtime/
           cp runtime-source/LICENSE voice-runtime/LICENSE.sherpa-onnx.txt
           cp runtime-source/wasm/tts/assets/LICENSE voice-runtime/LICENSE.kokoro.txt
+          python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          chunk_size = 4 * 1024 * 1024
+          runtime_dir = Path('voice-runtime')
+          files = {}
+          for path in sorted(runtime_dir.iterdir()):
+              if not path.is_file():
+                  continue
+              digest = hashlib.sha256()
+              chunks = []
+              with path.open('rb') as source:
+                  while True:
+                      chunk = source.read(chunk_size)
+                      if not chunk:
+                          break
+                      digest.update(chunk)
+                      chunks.append(hashlib.sha256(chunk).hexdigest())
+              files[path.name] = {
+                  'size': path.stat().st_size,
+                  'sha256': digest.hexdigest(),
+                  'chunkSize': chunk_size,
+                  'chunks': chunks,
+              }
+          manifest = {'version': 'voice-runtime-v2', 'files': files}
+          (runtime_dir / 'voice-runtime-manifest.json').write_text(
+              json.dumps(manifest, ensure_ascii=False, separators=(',', ':'))
+          )
+          PY
           ls -lh voice-runtime
 
       - name: Publish voice runtime release
@@ -98,3 +155,4 @@ jobs:
           gh release view voice-runtime-v1 >/dev/null 2>&1 || \
             gh release create voice-runtime-v1 --title "Voice Runtime v1" --notes "Single-thread browser runtime for local Chinese speech synthesis."
           gh release upload voice-runtime-v1 voice-runtime/* --clobber
+          gh workflow run mirror-voice-runtime.yml --ref main

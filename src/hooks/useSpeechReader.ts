@@ -31,11 +31,16 @@ interface SpeechReaderResult {
   continuous: boolean
   play: () => void
   pause: () => void
-  stop: () => void
   retry: () => void
   retryNaturalVoice: () => void
   cancelNaturalVoice: () => void
   clearNaturalVoiceCache: () => Promise<boolean>
+  getNaturalVoiceCacheInfo: () => Promise<{
+    ok: boolean
+    cachedBytes: number
+    totalBytes: number
+    message?: string
+  }>
   previousSentence: () => void
   nextSentence: () => void
   previousChapter: () => void
@@ -154,10 +159,11 @@ export function useSpeechReader({
     setError('')
     if (engineRef.current.kind === 'kokoro') {
       setProgress({
+        phase: 'checking-cache',
         percent: 0,
         downloadedBytes: 0,
         totalBytes: 0,
-        label: '正在启动本地语音运行时。',
+        label: '正在检查本地语音缓存。',
       })
     }
     try {
@@ -246,12 +252,6 @@ export function useSpeechReader({
     updateStatus('paused')
   }, [updateStatus])
 
-  /** 停止当前音频并保留当前句。 */
-  const stop = useCallback(() => {
-    engineRef.current.stop()
-    updateStatus('idle')
-  }, [updateStatus])
-
   /** 重新播放发生错误的当前句。 */
   const retry = useCallback(() => {
     setError('')
@@ -280,6 +280,12 @@ export function useSpeechReader({
   /** 清除浏览器中缓存的本地自然语音模型。 */
   const clearNaturalVoiceCache = useCallback(
     () => KokoroSpeechEngine.clearCache(),
+    [],
+  )
+
+  /** 查询已保存的模型分片大小，为清除缓存确认框提供准确数据。 */
+  const getNaturalVoiceCacheInfo = useCallback(
+    () => KokoroSpeechEngine.getCacheInfo(),
     [],
   )
 
@@ -389,11 +395,11 @@ export function useSpeechReader({
     continuous,
     play,
     pause,
-    stop,
     retry,
     retryNaturalVoice,
     cancelNaturalVoice,
     clearNaturalVoiceCache,
+    getNaturalVoiceCacheInfo,
     previousSentence,
     nextSentence,
     previousChapter,

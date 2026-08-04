@@ -10,10 +10,11 @@ describe('parseKokoroProgress', () => {
     expect(
       parseKokoroProgress('Downloading data... (52428800/104857600)'),
     ).toEqual({
+      phase: 'downloading-model',
       percent: 50,
       downloadedBytes: 52428800,
       totalBytes: 104857600,
-      label: 'Downloading data... (52428800/104857600)',
+      label: '正在下载语音模型。',
     })
   })
 
@@ -24,10 +25,11 @@ describe('parseKokoroProgress', () => {
         215321623,
       ),
     ).toEqual({
+      phase: 'downloading-model',
       percent: (173748224 / 215321623) * 100,
       downloadedBytes: 173748224,
       totalBytes: 215321623,
-      label: 'Downloading data... (173748224/147010355)',
+      label: '正在下载语音模型。',
     })
   })
 
@@ -38,15 +40,17 @@ describe('parseKokoroProgress', () => {
         215321623,
       ),
     ).toEqual({
+      phase: 'loading-model',
       percent: 100,
       downloadedBytes: 215321623,
       totalBytes: 215321623,
-      label: 'Downloading data... (300000000/147010355)',
+      label: '下载完成，正在载入语音模型。',
     })
   })
 
   it('保留非下载阶段的初始化状态', () => {
     expect(parseKokoroProgress('Running...')).toEqual({
+      phase: 'starting-runtime',
       percent: 0,
       downloadedBytes: 0,
       totalBytes: 0,

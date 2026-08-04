@@ -3,7 +3,6 @@ import {
   BookOpenText,
   ChevronLeft,
   ChevronRight,
-  CircleStop,
   DatabaseZap,
   FileText,
   ImageIcon,
@@ -110,8 +109,15 @@ export function ReaderWorkspace({
     chapters.findIndex((chapter) => chapter.path === savedState?.chapterPath),
   )
   const articleRef = useRef<HTMLElement | null>(null)
+  const cacheDialogRef = useRef<HTMLDialogElement | null>(null)
   const manualScrollUntilRef = useRef(0)
   const [pdfViewMode, setPdfViewMode] = useState<'text' | 'page'>('text')
+  const [cacheInfo, setCacheInfo] = useState({
+    cachedBytes: 0,
+    totalBytes: 0,
+  })
+  const [cacheMessage, setCacheMessage] = useState('')
+  const [clearingCache, setClearingCache] = useState(false)
 
   /** 保存位置变更，同时避免保存不存在的章节。 */
   const handlePositionChange = useCallback(
@@ -182,6 +188,33 @@ export function ReaderWorkspace({
     [enableFollowing],
   )
 
+  /** 查询语音缓存并打开页面内确认对话框。 */
+  const openCacheDialog = useCallback(async () => {
+    setCacheMessage('')
+    const result = await reader.getNaturalVoiceCacheInfo()
+    setCacheInfo({
+      cachedBytes: result.cachedBytes,
+      totalBytes: result.totalBytes,
+    })
+    if (!result.ok) setCacheMessage(result.message ?? '无法读取缓存信息。')
+    cacheDialogRef.current?.showModal()
+  }, [reader])
+
+  /** 二次确认后清除模型分片与语音运行时文件缓存。 */
+  const confirmClearCache = useCallback(async () => {
+    setClearingCache(true)
+    setCacheMessage('')
+    const cleared = await reader.clearNaturalVoiceCache()
+    setClearingCache(false)
+    if (!cleared) {
+      setCacheMessage('缓存清除失败，请稍后重试。')
+      return
+    }
+    setCacheInfo({ cachedBytes: 0, totalBytes: cacheInfo.totalBytes })
+    setCacheMessage('语音缓存已清除。')
+    window.setTimeout(() => cacheDialogRef.current?.close(), 650)
+  }, [cacheInfo.totalBytes, reader])
+
   useEffect(() => {
     persistPreferences()
   }, [persistPreferences])
@@ -207,7 +240,8 @@ export function ReaderWorkspace({
               <h2>章节目录</h2>
             </div>
             <button
-              className="icon-button catalog__close"
+              className="icon-button catalog__close has-tooltip"
+              data-tooltip="关闭目录"
               onClick={onMenuClose}
               aria-label="关闭目录"
             >
@@ -335,7 +369,8 @@ export function ReaderWorkspace({
       <section className="player" aria-label="朗读播放器">
         <div className="player__transport">
           <button
-            className="icon-button"
+            className="icon-button has-tooltip"
+            data-tooltip="上一章"
             onClick={() => runNavigation(reader.previousChapter)}
             disabled={reader.chapterIndex === 0}
             aria-label="上一章"
@@ -343,7 +378,8 @@ export function ReaderWorkspace({
             <SkipBack aria-hidden="true" />
           </button>
           <button
-            className="icon-button"
+            className="icon-button has-tooltip"
+            data-tooltip="上一句"
             onClick={() => runNavigation(reader.previousSentence)}
             disabled={reader.chapterIndex === 0 && reader.sentenceIndex === 0}
             aria-label="上一句"
@@ -351,7 +387,8 @@ export function ReaderWorkspace({
             <ChevronLeft aria-hidden="true" />
           </button>
           <button
-            className="icon-button icon-button--primary"
+            className="icon-button icon-button--primary has-tooltip"
+            data-tooltip={reader.status === 'playing' ? '暂停朗读' : '播放朗读'}
             onClick={() => {
               enableFollowing()
               if (reader.status === 'playing') reader.pause()
@@ -366,14 +403,16 @@ export function ReaderWorkspace({
             )}
           </button>
           <button
-            className="icon-button"
+            className="icon-button has-tooltip"
+            data-tooltip="下一句"
             onClick={() => runNavigation(reader.nextSentence)}
             aria-label="下一句"
           >
             <ChevronRight aria-hidden="true" />
           </button>
           <button
-            className="icon-button"
+            className="icon-button has-tooltip"
+            data-tooltip="下一章"
             onClick={() => runNavigation(reader.nextChapter)}
             disabled={reader.chapterIndex === chapters.length - 1}
             aria-label="下一章"
@@ -403,10 +442,22 @@ export function ReaderWorkspace({
           {reader.progress ? (
             <div className="player__notice" role="status">
               <span>
-                正在准备本地自然语音 {reader.progress.percent.toFixed(1)}%
+                {reader.progress.label}
+                {reader.progress.totalBytes > 0
+                  ? ` ${reader.progress.percent.toFixed(1)}%`
+                  : ''}
                 {reader.progress.totalBytes > 0
                   ? ` · ${formatMegabytes(reader.progress.downloadedBytes)} / ${formatMegabytes(reader.progress.totalBytes)}`
                   : ''}
+                {reader.progress.source === 'local-resume'
+                  ? ' · 本地续传'
+                  : reader.progress.source === 'cdn'
+                    ? ' · CDN 下载'
+                    : reader.progress.source === 'pages-fallback'
+                      ? ' · Pages 备用'
+                      : reader.progress.source === 'local-cache'
+                        ? ' · 本地缓存'
+                        : ''}
               </span>
               <button onClick={reader.cancelNaturalVoice}>取消</button>
             </div>
@@ -448,21 +499,46 @@ export function ReaderWorkspace({
             <span>连续</span>
           </label>
           <button
-            className="icon-button"
-            onClick={reader.stop}
-            aria-label="停止朗读"
-          >
-            <CircleStop aria-hidden="true" />
-          </button>
-          <button
-            className="icon-button"
-            onClick={() => void reader.clearNaturalVoiceCache()}
+            className="icon-button has-tooltip"
+            data-tooltip="清除语音缓存"
+            onClick={() => void openCacheDialog()}
             aria-label="清除自然语音缓存"
           >
             <DatabaseZap aria-hidden="true" />
           </button>
         </div>
       </section>
+
+      <dialog className="cache-dialog" ref={cacheDialogRef}>
+        <form method="dialog" className="cache-dialog__sheet">
+          <span className="eyebrow">Local voice storage</span>
+          <h2>清除语音缓存？</h2>
+          <p>
+            当前已缓存 {formatMegabytes(cacheInfo.cachedBytes)}
+            。清除后，下次使用本地自然语音需要重新下载
+            {cacheInfo.totalBytes > 0
+              ? ` ${formatMegabytes(cacheInfo.totalBytes)}`
+              : '完整模型'}
+            。
+          </p>
+          {cacheMessage ? (
+            <p className="cache-dialog__message">{cacheMessage}</p>
+          ) : null}
+          <div className="cache-dialog__actions">
+            <button value="cancel" disabled={clearingCache}>
+              保留缓存
+            </button>
+            <button
+              className="cache-dialog__danger"
+              type="button"
+              disabled={clearingCache}
+              onClick={() => void confirmClearCache()}
+            >
+              {clearingCache ? '正在清除' : '确认清除'}
+            </button>
+          </div>
+        </form>
+      </dialog>
     </>
   )
 }
