@@ -352,6 +352,24 @@ a {
   color: var(--muted);
   font-size: 0.78rem;
 }
+.article__pdf-preview {
+  max-width: 980px;
+  margin: 0 auto 52px;
+}
+.article__pdf-preview img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.article__pdf-preview figcaption {
+  margin-top: 10px;
+  color: var(--muted);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-align: right;
+}
 .article__body {
   max-width: 76ch;
   margin: 0 auto;

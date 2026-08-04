@@ -34,6 +34,10 @@ npm run dev
 npm run check
 ```
 
+## 语音资源加速
+
+体积最大的本地语音模型优先从 Hugging Face 公共 CDN 下载，失败时自动回退到随 GitHub Pages 部署的仓库资源。仓库管理员可设置 GitHub Actions Secret `HF_TOKEN`，并按需设置 Variable `HF_REPO_ID`，随后手动运行 `Mirror Voice Runtime` 工作流，将 `voice-runtime-v1` Release 资源同步到公开 Dataset 仓库。默认目标为 `gws0920/github-markdown-reader-voice-runtime`。
+
 ## 支持的输入
 
 ```text

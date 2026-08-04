@@ -62,6 +62,7 @@ export interface Chapter {
   blocks: ReadingBlock[]
   sentences: SpeechSentence[]
   sections: ChapterSection[]
+  previewUrl?: string
 }
 
 export type PlaybackStatus = 'idle' | 'playing' | 'paused' | 'error'

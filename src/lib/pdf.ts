@@ -14,6 +14,16 @@ GlobalWorkerOptions.workerSrc = pdfWorkerUrl
 interface PdfTextItem {
   str: string
   hasEOL?: boolean
+  transform?: number[]
+  width?: number
+  height?: number
+}
+
+interface PdfTextLine {
+  text: string
+  x: number
+  y: number
+  height: number
 }
 
 interface LoadedPdfBook {
@@ -36,31 +46,110 @@ function shouldJoinWithoutSpace(previous: string, next: string): boolean {
   )
 }
 
-/** 将 PDF.js 的文本项还原为适合中文朗读的段落文本。 */
-export function joinPdfTextItems(items: PdfTextItem[]): string {
+/** 将同一视觉行内的 PDF 文本项按中英文排版规则拼接。 */
+function joinPdfLineItems(items: PdfTextItem[]): string {
   let text = ''
-
-  for (const item of items) {
+  items.forEach((item) => {
     const value = item.str.trim()
-    if (!value) continue
+    if (!value) return
     const previous = text.trimEnd().at(-1) ?? ''
     const next = value.at(0) ?? ''
-    const separator =
-      !text || text.endsWith('\n') || shouldJoinWithoutSpace(previous, next)
-        ? ''
-        : ' '
-    text += `${separator}${value}${item.hasEOL ? '\n' : ''}`
+    const separator = !text || shouldJoinWithoutSpace(previous, next) ? '' : ' '
+    text += `${separator}${value}`
+  })
+  return text.trim()
+}
+
+/** 根据文本项坐标恢复 PDF 的视觉行，并兼容缺少坐标的旧测试数据。 */
+function createPdfTextLines(items: PdfTextItem[]): PdfTextLine[] {
+  const positioned = items.some((item) => item.transform?.length)
+  if (!positioned) {
+    const lines: PdfTextLine[] = []
+    let current: PdfTextItem[] = []
+    items.forEach((item) => {
+      current.push(item)
+      if (item.hasEOL) {
+        lines.push({ text: joinPdfLineItems(current), x: 0, y: 0, height: 12 })
+        current = []
+      }
+    })
+    if (current.length)
+      lines.push({ text: joinPdfLineItems(current), x: 0, y: 0, height: 12 })
+    return lines.filter((line) => line.text)
   }
 
-  return text
-    .replace(/([A-Za-z])-\n(?=[a-z])/g, '$1')
-    .replace(
-      /([\p{Script=Han}，。！？；：、“”‘’）】])\n(?=[\p{Script=Han}])/gu,
-      '$1',
+  const rows: Array<{ y: number; items: PdfTextItem[] }> = []
+  items
+    .filter((item) => item.str.trim())
+    .sort((left, right) => {
+      const yDiff = (right.transform?.[5] ?? 0) - (left.transform?.[5] ?? 0)
+      return Math.abs(yDiff) > 2
+        ? yDiff
+        : (left.transform?.[4] ?? 0) - (right.transform?.[4] ?? 0)
+    })
+    .forEach((item) => {
+      const y = item.transform?.[5] ?? 0
+      const row = rows.find((candidate) => Math.abs(candidate.y - y) <= 2)
+      if (row) row.items.push(item)
+      else rows.push({ y, items: [item] })
+    })
+
+  return rows.map((row) => {
+    const sorted = row.items.sort(
+      (left, right) => (left.transform?.[4] ?? 0) - (right.transform?.[4] ?? 0),
     )
-    .replace(/\n+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+    return {
+      text: joinPdfLineItems(sorted),
+      x: sorted[0]?.transform?.[4] ?? 0,
+      y: row.y,
+      height: Math.max(...sorted.map((item) => item.height ?? 12)),
+    }
+  })
+}
+
+/** 判断当前视觉行是否应开启新段落，保留明显行距、缩进和完整句末。 */
+function shouldStartPdfParagraph(
+  previous: PdfTextLine,
+  current: PdfTextLine,
+  baseX: number,
+): boolean {
+  const verticalGap = previous.y - current.y
+  const typicalHeight = Math.max(previous.height, current.height, 10)
+  const indented = current.x - baseX > typicalHeight * 0.9
+  const previousEnded = /[。！？；.!?;：:]([”’」』】）》])?$/.test(
+    previous.text,
+  )
+  return verticalGap > typicalHeight * 1.65 || indented || previousEnded
+}
+
+/** 将 PDF.js 文本项恢复为带段落分隔的可读文本。 */
+export function joinPdfTextItems(items: PdfTextItem[]): string {
+  const lines = createPdfTextLines(items)
+  if (!lines.length) return ''
+  const baseX = Math.min(...lines.map((line) => line.x))
+  const paragraphs: string[] = []
+  let paragraph = ''
+
+  lines.forEach((line, index) => {
+    const previous = lines[index - 1]
+    if (previous && shouldStartPdfParagraph(previous, line, baseX)) {
+      if (paragraph.trim()) paragraphs.push(paragraph.trim())
+      paragraph = ''
+    }
+    if (/^[A-Za-z]/.test(line.text) && /[A-Za-z]-$/.test(paragraph)) {
+      paragraph = paragraph.slice(0, -1) + line.text
+      return
+    }
+    const previousCharacter = paragraph.trimEnd().at(-1) ?? ''
+    const nextCharacter = line.text.at(0) ?? ''
+    const separator =
+      !paragraph || shouldJoinWithoutSpace(previousCharacter, nextCharacter)
+        ? ''
+        : ' '
+    paragraph += `${separator}${line.text}`
+  })
+  if (paragraph.trim()) paragraphs.push(paragraph.trim())
+  return paragraphs.join('\n\n')
 }
 
 /** 将单页纯文本转换为与 Markdown 阅读器一致的章节、正文块和句子模型。 */
@@ -69,9 +158,10 @@ export function createPdfPageChapter(
   pageNumber: number,
   documentName: string,
   sourceUrl: string,
+  previewUrl?: string,
 ): Chapter | null {
   const paragraphs = text
-    .split(/\n+/)
+    .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean)
   if (paragraphs.length === 0) return null
@@ -122,7 +212,32 @@ export function createPdfPageChapter(
         sentenceIndex: 0,
       },
     ],
+    previewUrl,
   }
+}
+
+/** 将 PDF 页面渲染为轻量 JPEG 预览，保留页面中的图片、表格和原始版式。 */
+async function renderPdfPagePreview(
+  page: Awaited<ReturnType<PDFDocumentProxy['getPage']>>,
+): Promise<string> {
+  const naturalViewport = page.getViewport({ scale: 1 })
+  const scale = Math.min(1.6, 1200 / naturalViewport.width)
+  const viewport = page.getViewport({ scale })
+  const canvas = document.createElement('canvas')
+  canvas.width = Math.ceil(viewport.width)
+  canvas.height = Math.ceil(viewport.height)
+  const context = canvas.getContext('2d', { alpha: false })
+  if (!context) throw new Error('浏览器无法创建 PDF 页面预览。')
+  await page.render({ canvas, canvasContext: context, viewport }).promise
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (result) =>
+        result ? resolve(result) : reject(new Error('PDF 页面预览生成失败。')),
+      'image/jpeg',
+      0.82,
+    )
+  })
+  return URL.createObjectURL(blob)
 }
 
 /** 校验二进制内容是否具有 PDF 文件签名。 */
@@ -145,13 +260,25 @@ async function extractPdfChapters(
     const page = await document.getPage(pageNumber)
     const content = await page.getTextContent()
     const items: PdfTextItem[] = content.items.flatMap((item) =>
-      'str' in item ? [{ str: item.str, hasEOL: item.hasEOL }] : [],
+      'str' in item
+        ? [
+            {
+              str: item.str,
+              hasEOL: item.hasEOL,
+              transform: item.transform,
+              width: item.width,
+              height: item.height,
+            },
+          ]
+        : [],
     )
+    const previewUrl = await renderPdfPagePreview(page)
     const chapter = createPdfPageChapter(
       joinPdfTextItems(items),
       pageNumber,
       documentName,
       sourceUrl,
+      previewUrl,
     )
     if (chapter) chapters.push(chapter)
     page.cleanup()

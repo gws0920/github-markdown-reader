@@ -277,6 +277,15 @@ export function ReaderWorkspace({
               </span>
             )}
           </header>
+          {chapter.previewUrl ? (
+            <figure className="article__pdf-preview">
+              <img
+                alt={`${chapter.title} 原始页面预览`}
+                src={chapter.previewUrl}
+              />
+              <figcaption>原始页面预览 · 下方文字用于逐句朗读与高亮</figcaption>
+            </figure>
+          ) : null}
           <div className="article__body">
             {chapter.blocks.map((block) => (
               <ArticleBlock

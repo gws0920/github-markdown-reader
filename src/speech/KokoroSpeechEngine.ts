@@ -22,7 +22,7 @@ type WorkerMessage =
     }
   | { type: 'error'; message: string }
 
-const CACHE_NAME = 'github-markdown-reader-kokoro-v5'
+const CACHE_NAME = 'github-markdown-reader-kokoro-v6'
 
 /** 将 Emscripten 下载状态解析为播放器可展示的进度。 */
 export function parseKokoroProgress(status: string): SpeechProgress {

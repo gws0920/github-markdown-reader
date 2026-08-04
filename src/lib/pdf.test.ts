@@ -20,7 +20,7 @@ describe('PDF text conversion', () => {
         { str: 'Next' },
         { str: 'page' },
       ]),
-    ).toBe('这是中文PDF。 Next page')
+    ).toBe('这是中文PDF。\n\nNext page')
   })
 
   it('合并英文 PDF 的行尾断词', () => {
@@ -31,6 +31,25 @@ describe('PDF text conversion', () => {
         { str: 'better performance.' },
       ]),
     ).toBe('virtual machines provide better performance.')
+  })
+
+  it('按视觉行距恢复 PDF 段落', () => {
+    expect(
+      joinPdfTextItems([
+        { str: '第一段第一行', transform: [1, 0, 0, 1, 20, 100], height: 10 },
+        { str: '继续内容。', transform: [1, 0, 0, 1, 20, 88], height: 10 },
+        { str: '第二段。', transform: [1, 0, 0, 1, 20, 62], height: 10 },
+      ]),
+    ).toBe('第一段第一行继续内容。\n\n第二段。')
+  })
+
+  it('按首行缩进恢复 PDF 段落', () => {
+    expect(
+      joinPdfTextItems([
+        { str: '上一段内容', transform: [1, 0, 0, 1, 20, 100], height: 10 },
+        { str: '新段落内容', transform: [1, 0, 0, 1, 32, 88], height: 10 },
+      ]),
+    ).toBe('上一段内容\n\n新段落内容')
   })
 
   it('将 PDF 页面转换为可逐句朗读的章节', () => {
