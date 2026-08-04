@@ -55,41 +55,45 @@ jobs:
             curl --fail --location --retry 3 \
               "$release_base/voice-runtime-manifest.json" \
               --output dist/voice-runtime/voice-runtime-manifest.json || true
-            if [ ! -f dist/voice-runtime/voice-runtime-manifest.json ]; then
-              python3 - <<'PY'
-              import hashlib
-              import json
-              from pathlib import Path
-
-              chunk_size = 4 * 1024 * 1024
-              runtime_dir = Path('dist/voice-runtime')
-              files = {}
-              for path in sorted(runtime_dir.iterdir()):
-                  if not path.is_file():
-                      continue
-                  digest = hashlib.sha256()
-                  chunks = []
-                  with path.open('rb') as source:
-                      while True:
-                          chunk = source.read(chunk_size)
-                          if not chunk:
-                              break
-                          digest.update(chunk)
-                          chunks.append(hashlib.sha256(chunk).hexdigest())
-                  files[path.name] = {
-                      'size': path.stat().st_size,
-                      'sha256': digest.hexdigest(),
-                      'chunkSize': chunk_size,
-                      'chunks': chunks,
-                  }
-              manifest = {'version': 'voice-runtime-v2', 'files': files}
-              (runtime_dir / 'voice-runtime-manifest.json').write_text(
-                  json.dumps(manifest, ensure_ascii=False, separators=(',', ':'))
-              )
-              PY
-            fi
           else
             echo "Voice runtime release is not available yet; browser speech fallback remains enabled."
+          fi
+      - name: Ensure runtime manifest
+        if: github.event_name == 'push'
+        run: |
+          if [ -f dist/voice-runtime/sherpa-onnx-wasm-main-tts.data ] && \
+             [ ! -f dist/voice-runtime/voice-runtime-manifest.json ]; then
+            python3 - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          chunk_size = 4 * 1024 * 1024
+          runtime_dir = Path('dist/voice-runtime')
+          files = {}
+          for path in sorted(runtime_dir.iterdir()):
+              if not path.is_file():
+                  continue
+              digest = hashlib.sha256()
+              chunks = []
+              with path.open('rb') as source:
+                  while True:
+                      chunk = source.read(chunk_size)
+                      if not chunk:
+                          break
+                      digest.update(chunk)
+                      chunks.append(hashlib.sha256(chunk).hexdigest())
+              files[path.name] = {
+                  'size': path.stat().st_size,
+                  'sha256': digest.hexdigest(),
+                  'chunkSize': chunk_size,
+                  'chunks': chunks,
+              }
+          manifest = {'version': 'voice-runtime-v2', 'files': files}
+          (runtime_dir / 'voice-runtime-manifest.json').write_text(
+              json.dumps(manifest, ensure_ascii=False, separators=(',', ':'))
+          )
+          PY
           fi
       - name: Upload Pages artifact
         if: github.event_name == 'push'
