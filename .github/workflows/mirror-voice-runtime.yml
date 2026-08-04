@@ -6,6 +6,7 @@ on:
     types: [published, edited]
 
 permissions:
+  actions: write
   contents: write
 
 jobs:
@@ -66,3 +67,5 @@ jobs:
           git add public/voice-cache-sw.js
           git commit -m "Configure voice CDN endpoint"
           git push
+      - name: Deploy resolved CDN endpoint
+        run: gh workflow run pages.yml --ref main
