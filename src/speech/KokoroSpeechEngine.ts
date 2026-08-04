@@ -22,7 +22,7 @@ type WorkerMessage =
     }
   | { type: 'error'; message: string }
 
-const CACHE_NAME = 'github-markdown-reader-kokoro-v6'
+const CACHE_NAME = 'github-markdown-reader-kokoro-v7'
 const KOKORO_DATA_BYTES = 215321623
 
 /** 将 Emscripten 下载状态解析为播放器可展示的进度。 */

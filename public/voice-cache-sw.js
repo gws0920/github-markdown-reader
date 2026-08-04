@@ -1,4 +1,4 @@
-const CACHE_NAME = 'github-markdown-reader-kokoro-v6'
+const CACHE_NAME = 'github-markdown-reader-kokoro-v7'
 const CDN_BASE =
   'https://huggingface.co/datasets/gws0920/github-markdown-reader-voice-runtime/resolve/main/'
 const ACCELERATOR_TIMEOUT_MS = 15000
@@ -47,6 +47,17 @@ function shouldUseReleaseCdn(fileName) {
   return fileName.endsWith('.data')
 }
 
+/** 为运行时响应增加实际资源来源标记，便于浏览器诊断缓存与回退行为。 */
+function markRuntimeSource(response, source) {
+  const headers = new Headers(response.headers)
+  headers.set('X-Voice-Runtime-Source', source)
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  })
+}
+
 /** 在限定时间内尝试公共模型 CDN，失败时由调用方切换 Pages 同源资源。 */
 async function fetchCdnAsset(fileName, request) {
   const controller = new AbortController()
@@ -58,7 +69,7 @@ async function fetchCdnAsset(fileName, request) {
     })
     if (!response.ok) throw new Error(`Voice CDN returned ${response.status}`)
     await broadcastRuntimeSource('cdn', fileName)
-    return response
+    return markRuntimeSource(response, 'cdn')
   } finally {
     clearTimeout(timer)
   }
@@ -74,7 +85,8 @@ async function fetchRuntimeAsset(request) {
       await broadcastRuntimeSource('pages-fallback', fileName)
     }
   }
-  return fetch(request)
+  const response = await fetch(request)
+  return markRuntimeSource(response, 'pages-fallback')
 }
 
 /** 对语音运行时资源采用缓存优先，并将主源或兜底源响应写入统一缓存键。 */
@@ -91,8 +103,10 @@ self.addEventListener('fetch', (event) => {
       const cached = await cache.match(event.request)
       if (cached) {
         finishCacheWork()
+        const cachedSource =
+          cached.headers.get('X-Voice-Runtime-Source') ?? 'cache'
         await broadcastRuntimeSource(
-          'cache',
+          cachedSource,
           getRuntimeFileName(event.request.url),
         )
         return cached
