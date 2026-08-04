@@ -152,6 +152,14 @@ export function useSpeechReader({
   const ensureEngine = useCallback(async (): Promise<void> => {
     if (initializedRef.current) return
     setError('')
+    if (engineRef.current.kind === 'kokoro') {
+      setProgress({
+        percent: 0,
+        downloadedBytes: 0,
+        totalBytes: 0,
+        label: '正在启动本地语音运行时。',
+      })
+    }
     try {
       await engineRef.current.initialize(setProgress)
       initializedRef.current = true
@@ -227,6 +235,7 @@ export function useSpeechReader({
       updateStatus('playing')
       return
     }
+    engineRef.current.activate?.()
     speakCurrentRef.current()
   }, [updateStatus])
 

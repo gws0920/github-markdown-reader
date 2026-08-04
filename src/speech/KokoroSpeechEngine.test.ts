@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest'
-import { parseKokoroProgress } from './KokoroSpeechEngine'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { KokoroSpeechEngine, parseKokoroProgress } from './KokoroSpeechEngine'
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe('parseKokoroProgress', () => {
   it('解析 Emscripten 模型下载进度', () => {
@@ -20,5 +24,22 @@ describe('parseKokoroProgress', () => {
       totalBytes: 0,
       label: 'Running...',
     })
+  })
+})
+
+describe('KokoroSpeechEngine activation', () => {
+  it('在异步模型加载前同步创建并恢复音频上下文', () => {
+    const resume = vi.fn().mockResolvedValue(undefined)
+    const AudioContextMock = vi.fn(function AudioContextMock() {
+      return { state: 'suspended', resume }
+    })
+    vi.stubGlobal('AudioContext', AudioContextMock)
+
+    const engine = new KokoroSpeechEngine()
+    engine.activate()
+    engine.activate()
+
+    expect(AudioContextMock).toHaveBeenCalledTimes(1)
+    expect(resume).toHaveBeenCalledTimes(2)
   })
 })

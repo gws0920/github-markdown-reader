@@ -22,7 +22,7 @@ type WorkerMessage =
     }
   | { type: 'error'; message: string }
 
-const CACHE_NAME = 'github-markdown-reader-kokoro-v2'
+const CACHE_NAME = 'github-markdown-reader-kokoro-v3'
 
 /** 将 Emscripten 下载状态解析为播放器可展示的进度。 */
 export function parseKokoroProgress(status: string): SpeechProgress {
@@ -55,6 +55,15 @@ export class KokoroSpeechEngine implements SpeechEngine {
   private queue: GenerationTask[] = []
   private prepared = new Map<string, Promise<GeneratedAudio>>()
   private playbackToken = 0
+
+  /** 在用户点击播放的同步阶段创建并唤醒音频上下文，避免异步下载后被自动播放策略拦截。 */
+  activate(): void {
+    if (typeof AudioContext === 'undefined') return
+    this.audioContext ??= new AudioContext()
+    if (this.audioContext.state === 'suspended') {
+      void this.audioContext.resume()
+    }
+  }
 
   /** 创建模型 Worker 并等待运行时及模型初始化完成。 */
   async initialize(

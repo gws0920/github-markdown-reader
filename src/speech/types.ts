@@ -21,6 +21,7 @@ export interface SpeechRequest extends SpeechCallbacks {
 export interface SpeechEngine {
   readonly kind: SpeechEngineKind
   readonly label: string
+  activate?: () => void
   initialize: (onProgress?: (progress: SpeechProgress) => void) => Promise<void>
   speak: (request: SpeechRequest) => Promise<void>
   prepare: (text: string, rate: number) => void

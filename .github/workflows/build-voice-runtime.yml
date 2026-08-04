@@ -42,6 +42,12 @@ jobs:
           sed --in-place '/-pthread -sPTHREAD_POOL_SIZE=4/d' wasm/tts/CMakeLists.txt
           sed --in-place '/pthread-enabled/d' wasm/tts/CMakeLists.txt
 
+      - name: Remove unsupported Kokoro lexicon tokens
+        working-directory: runtime-source/wasm/tts/assets
+        run: |
+          sed --in-place '/^呣 ❓$/d' lexicon-zh.txt
+          test "$(grep --count '❓' lexicon-zh.txt || true)" = "0"
+
       - name: Configure Kokoro WebAssembly defaults
         working-directory: runtime-source
         run: |
