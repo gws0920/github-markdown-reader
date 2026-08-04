@@ -6,7 +6,7 @@ on:
     types: [published, edited]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   mirror:
@@ -15,8 +15,10 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      HF_REPO_ID: ${{ vars.HF_REPO_ID || 'gws0920/github-markdown-reader-voice-runtime' }}
+      CONFIGURED_HF_REPO_ID: ${{ vars.HF_REPO_ID }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v7
       - name: Require mirror credentials
         run: test -n "$HF_TOKEN"
       - name: Download release assets
@@ -27,7 +29,40 @@ jobs:
             --dir voice-runtime
       - name: Install public upload client
         run: python -m pip install --index-url https://pypi.org/simple huggingface_hub
+      - name: Resolve dataset repository
+        run: |
+          if [ -n "$CONFIGURED_HF_REPO_ID" ]; then
+            repo_id="$CONFIGURED_HF_REPO_ID"
+          else
+            namespace="$(python -c 'import os; from huggingface_hub import HfApi; print(HfApi(token=os.environ["HF_TOKEN"]).whoami()["name"])')"
+            repo_id="$namespace/github-markdown-reader-voice-runtime"
+          fi
+          echo "HF_REPO_ID=$repo_id" >> "$GITHUB_ENV"
       - name: Create public dataset repository
-        run: hf repo create "$HF_REPO_ID" --repo-type dataset --exist-ok
+        run: hf repos create "$HF_REPO_ID" --repo-type dataset --public --exist-ok --token "$HF_TOKEN"
       - name: Upload runtime to public CDN
-        run: hf upload "$HF_REPO_ID" voice-runtime . --repo-type dataset
+        run: hf upload "$HF_REPO_ID" voice-runtime . --repo-type dataset --token "$HF_TOKEN"
+      - name: Update application CDN endpoint
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          path = Path('public/voice-cache-sw.js')
+          source = path.read_text()
+          marker = "const CDN_BASE =\n  '"
+          start = source.index(marker) + len(marker)
+          end = source.index("'", start)
+          cdn_base = f'https://huggingface.co/datasets/{os.environ["HF_REPO_ID"]}/resolve/main/'
+          path.write_text(source[:start] + cdn_base + source[end:])
+          PY
+      - name: Publish resolved CDN endpoint
+        run: |
+          if git diff --quiet -- public/voice-cache-sw.js; then
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add public/voice-cache-sw.js
+          git commit -m "Configure voice CDN endpoint"
+          git push
