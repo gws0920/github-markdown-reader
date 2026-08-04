@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "prepare:voice-runtime": "node scripts/prepareVoiceRuntime.mjs",
+    "predev": "npm run prepare:voice-runtime",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",

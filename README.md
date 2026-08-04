@@ -29,6 +29,8 @@ npm install --registry=https://registry.npmjs.org/
 npm run dev
 ```
 
+`npm run dev` 会先从公开 CDN 下载并校验本地开发所需的 Worker、JavaScript 和 WASM 文件。约 205 MB 的语音模型不会写入仓库，仍由浏览器 Service Worker 分片下载到 IndexedDB，并支持刷新后续传。
+
 生产验证：
 
 ```bash
