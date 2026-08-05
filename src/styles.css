@@ -54,6 +54,18 @@ a {
   min-height: 100vh;
   padding-bottom: 94px;
 }
+.app-shell--home {
+  height: 100vh;
+  height: 100svh;
+  min-height: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.app-shell--home .site-header {
+  flex: none;
+}
 .eyebrow {
   color: var(--accent);
   font-size: 0.7rem;
@@ -193,33 +205,39 @@ a {
 
 .empty-state {
   min-height: calc(100vh - 222px);
-  padding: clamp(60px, 10vw, 140px) clamp(20px, 8vw, 140px);
+  padding: clamp(44px, 7vh, 82px) clamp(20px, 8vw, 140px);
   display: grid;
   grid-template-columns: 0.42fr 1fr;
   gap: 8vw;
   align-items: start;
 }
+.app-shell--home .empty-state {
+  min-height: 0;
+  flex: 1;
+  align-items: center;
+  overflow: hidden;
+}
 .empty-state__number {
   color: var(--accent);
   font:
-    400 clamp(8rem, 22vw, 22rem)/0.72 'Libre Bodoni',
+    400 clamp(7rem, min(20vw, 28vh), 19rem)/0.72 'Libre Bodoni',
     serif;
   letter-spacing: -0.1em;
 }
 .empty-state h1 {
   max-width: 920px;
-  margin: 18px 0 30px;
+  margin: clamp(10px, 2vh, 18px) 0 clamp(16px, 3vh, 28px);
   font:
-    500 clamp(3rem, 7vw, 7.8rem)/0.95 'Libre Bodoni',
+    500 clamp(2.8rem, min(6.2vw, 9vh), 6.8rem)/0.95 'Libre Bodoni',
     'Songti SC',
     serif;
   letter-spacing: -0.055em;
 }
 .empty-state p {
   max-width: 680px;
-  margin: 0 0 32px;
-  font-size: clamp(1rem, 1.5vw, 1.25rem);
-  line-height: 1.8;
+  margin: 0 0 clamp(18px, 3vh, 30px);
+  font-size: clamp(0.94rem, 1.35vw, 1.16rem);
+  line-height: 1.7;
 }
 
 .reading-layout {
@@ -766,6 +784,13 @@ a {
     grid-column: 1 / -1;
     grid-row: 2;
   }
+  .app-shell--home .site-header {
+    min-height: 154px;
+  }
+  .app-shell--home .empty-state {
+    padding-top: clamp(24px, 5vh, 54px);
+    padding-bottom: clamp(24px, 5vh, 54px);
+  }
   .menu-button {
     display: inline-flex;
   }
@@ -837,12 +862,27 @@ a {
     padding: 54px 20px;
     display: block;
   }
+  .app-shell--home .site-header {
+    min-height: 154px;
+  }
+  .app-shell--home .empty-state {
+    min-height: 0;
+    padding: clamp(20px, 4vh, 34px) 20px;
+    display: grid;
+    align-content: center;
+  }
   .empty-state__number {
-    margin-bottom: 45px;
-    font-size: 9rem;
+    margin-bottom: clamp(18px, 4vh, 34px);
+    font-size: clamp(5.7rem, min(25vw, 17vh), 8rem);
   }
   .empty-state h1 {
-    font-size: clamp(2.8rem, 14vw, 4.4rem);
+    margin-bottom: clamp(14px, 2.5vh, 24px);
+    font-size: clamp(2.45rem, min(12.5vw, 7.4vh), 4.1rem);
+  }
+  .empty-state p {
+    margin-bottom: clamp(16px, 2.5vh, 24px);
+    font-size: 0.94rem;
+    line-height: 1.62;
   }
   .article {
     padding: 42px 20px 110px;
@@ -876,6 +916,32 @@ a {
   }
   .player__title-row {
     margin-bottom: 8px;
+  }
+}
+
+@media (max-height: 700px) {
+  .app-shell--home .site-header {
+    min-height: 112px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .app-shell--home .brand {
+    gap: 4px;
+  }
+  .app-shell--home .empty-state {
+    padding-top: 18px;
+    padding-bottom: 18px;
+  }
+  .app-shell--home .empty-state__number {
+    margin-bottom: 14px;
+  }
+  .app-shell--home .empty-state h1 {
+    margin-top: 8px;
+    margin-bottom: 14px;
+  }
+  .app-shell--home .empty-state p {
+    margin-bottom: 16px;
+    line-height: 1.5;
   }
 }
 

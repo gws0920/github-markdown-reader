@@ -100,8 +100,12 @@ export default function App() {
     await loadSource(sourceInput)
   }
 
+  const readingActive = Boolean(source && chapters.length > 0)
+
   return (
-    <div className="app-shell">
+    <div
+      className={`app-shell ${readingActive ? 'app-shell--reading' : 'app-shell--home'}`}
+    >
       <header className="site-header">
         <div className="brand">
           <div className="brand__name">文档章节朗读</div>
@@ -155,7 +159,7 @@ export default function App() {
         ) : null}
       </header>
 
-      {source && chapters.length > 0 ? (
+      {readingActive && source ? (
         <ReaderWorkspace
           key={loadedSourceInput}
           chapters={chapters}
